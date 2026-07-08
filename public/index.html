@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>WebSocket Phase 1</title>
+</head>
+
+<body>
+    <h1>WebSocket Phase 1</h1>
+
+    <button id="connectBtn">WebSocket 연결</button>
+    <button id="sendBtn">메시지 보내기</button>
+
+    <script>
+        let socket = null;
+
+        const connectBtn = document.getElementById("connectBtn");
+        const sendBtn = document.getElementById("sendBtn");
+
+        connectBtn.addEventListener("click", () => {
+            socket = new WebSocket("ws://localhost:3008");
+
+            socket.addEventListener("open", () => {
+                console.log("브라우저: WebSocket 연결 성공");
+            });
+
+            socket.addEventListener("close", () => {
+                console.log("브라우저: WebSocket 연결 종료");
+            });
+
+            socket.addEventListener("error", (error) => {
+                console.log("브라우저: WebSocket 에러", error);
+            });
+        });
+
+        sendBtn.addEventListener("click", () => {
+            if (!socket) {
+                console.log("아직 WebSocket이 연결되지 않았습니다.");
+                return;
+            }
+
+            socket.send("안녕하세요");
+        });
+    </script>
+</body>
+
+</html>
