@@ -487,7 +487,23 @@
 
                             return;
                         }
-
+                        /**
+                         * 방의 기존 채팅 내역
+                        */
+                        if (data.type === "history") {
+                            console.log(
+                                "기존 채팅 내역:",
+                                data.messages,
+                            );
+                            data.messages.forEach((chatMessage) => {
+                                addMessage(
+                                    `${chatMessage.nickname}: ${chatMessage.message}`,
+                                    "",
+                                    chatMessage.createdAt,
+                                );
+                            });
+                            return;
+                        }
                         if (data.type === "chat") {
                             addMessage(
                                 `${data.nickname}: ${data.message}`,

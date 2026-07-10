@@ -4,7 +4,7 @@ const path = require("path");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 3008;
-
+const roomMessages = new Map(); // room_id를 키로, 메시지 배열을 값으로 저장
 /**
  * HTTP 서버
  *
@@ -103,6 +103,26 @@ function getRoomConnectionCount(roomId) {
 
     return count;
 }
+
+/**
+ * 특정 채팅방에 메시지를 저장합니다.
+ */
+function saveRoomMessage(roomId, message) {
+    const messages = roomMessages.get(roomId) || [];
+    messages.push(message);
+    roomMessages.set(roomId, messages);
+}
+
+function sendRoomHistory(ws, roomId) {
+    const messages = roomMessages.get(roomId) || [];
+
+    sendJson(ws, {
+        type: "history",
+        room_id: roomId,
+        messages,
+    });
+}
+
 
 wss.on("connection", (ws) => {
     /**
@@ -295,6 +315,8 @@ wss.on("connection", (ws) => {
                 createdAt: new Date().toISOString(),
             });
 
+            sendRoomHistory(ws, ws.room_id);
+
             /**
              * 같은 방 사용자에게만 입장 알림을 보냅니다.
              */
@@ -390,6 +412,8 @@ wss.on("connection", (ws) => {
                 `${ws.room_id}방에 브로드캐스트할 채팅:`,
                 chatMessage,
             );
+
+            saveRoomMessage(ws.room_id, chatMessage);
 
             /**
              * 같은 room_id를 가진 연결에만 메시지를 전송합니다.
