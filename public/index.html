@@ -3,45 +3,395 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>WebSocket Phase 1</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebSocket 닉네임 채팅</title>
+
+    <style>
+        body {
+            max-width: 720px;
+            margin: 40px auto;
+            padding: 0 20px;
+            font-family: sans-serif;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px;
+        }
+
+        button {
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+
+        button:disabled,
+        input:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        #status {
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        #messages {
+            min-height: 240px;
+            padding: 16px;
+            border: 1px solid #ccc;
+            list-style: none;
+        }
+
+        #messages li {
+            margin-bottom: 10px;
+        }
+
+        .system {
+            color: #666;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .time {
+            margin-left: 8px;
+            color: #888;
+            font-size: 12px;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>WebSocket Phase 1</h1>
+    <h1>WebSocket 채팅</h1>
 
-    <button id="connectBtn">WebSocket 연결</button>
-    <button id="sendBtn">메시지 보내기</button>
+    <div id="status">연결되지 않음</div>
+
+    <section>
+        <h2>1. WebSocket 연결</h2>
+
+        <div class="row">
+            <button id="connectBtn">WebSocket 연결</button>
+            <button id="disconnectBtn" disabled>연결 종료</button>
+        </div>
+    </section>
+
+    <section>
+        <h2>2. 닉네임 등록</h2>
+
+        <div class="row">
+            <input id="nicknameInput" type="text" placeholder="닉네임을 입력하세요" disabled />
+            <button id="registerBtn" disabled>닉네임 등록</button>
+        </div>
+    </section>
+
+    <section>
+        <h2>3. 메시지 전송</h2>
+
+        <form id="chatForm" class="row">
+            <input id="messageInput" type="text" placeholder="메시지를 입력하세요" disabled />
+            <button id="sendBtn" type="submit" disabled>전송</button>
+        </form>
+    </section>
+
+    <h2>받은 메시지</h2>
+    <ul id="messages"></ul>
 
     <script>
         let socket = null;
+        let registeredNickname = null;
+
+        const statusElement = document.getElementById("status");
+        const nicknameInput = document.getElementById("nicknameInput");
+        const messageInput = document.getElementById("messageInput");
 
         const connectBtn = document.getElementById("connectBtn");
+        const disconnectBtn = document.getElementById("disconnectBtn");
+        const registerBtn = document.getElementById("registerBtn");
         const sendBtn = document.getElementById("sendBtn");
 
-        connectBtn.addEventListener("click", () => {
-            socket = new WebSocket("ws://localhost:3008");
+        const chatForm = document.getElementById("chatForm");
+        const messages = document.getElementById("messages");
 
-            socket.addEventListener("open", () => {
-                console.log("브라우저: WebSocket 연결 성공");
+        function setStatus(text) {
+            statusElement.textContent = text;
+        }
+
+        function formatTime(createdAt) {
+            if (!createdAt) {
+                return "";
+            }
+
+            const date = new Date(createdAt);
+
+            return date.toLocaleTimeString("ko-KR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
             });
+        }
 
-            socket.addEventListener("close", () => {
-                console.log("브라우저: WebSocket 연결 종료");
-            });
+        function addMessage(text, className = "", createdAt = null) {
+            const li = document.createElement("li");
 
-            socket.addEventListener("error", (error) => {
-                console.log("브라우저: WebSocket 에러", error);
-            });
-        });
+            if (className) {
+                li.className = className;
+            }
 
-        sendBtn.addEventListener("click", () => {
+            const messageText = document.createElement("span");
+            messageText.textContent = text;
+            li.appendChild(messageText);
+
+            if (createdAt) {
+                const time = document.createElement("span");
+                time.className = "time";
+                time.textContent = formatTime(createdAt);
+                li.appendChild(time);
+            }
+
+            messages.appendChild(li);
+        }
+
+        function sendJson(payload) {
             if (!socket) {
-                console.log("아직 WebSocket이 연결되지 않았습니다.");
+                addMessage("WebSocket 객체가 없습니다.", "error");
+                return false;
+            }
+
+            if (socket.readyState !== WebSocket.OPEN) {
+                addMessage("WebSocket이 연결된 상태가 아닙니다.", "error");
+                return false;
+            }
+
+            const json = JSON.stringify(payload);
+
+            console.log("서버로 보내는 객체:", payload);
+            console.log("실제로 전송되는 문자열:", json);
+
+            socket.send(json);
+
+            return true;
+        }
+
+        function resetUi() {
+            registeredNickname = null;
+
+            connectBtn.disabled = false;
+            disconnectBtn.disabled = true;
+
+            nicknameInput.disabled = true;
+            registerBtn.disabled = true;
+
+            messageInput.disabled = true;
+            sendBtn.disabled = true;
+
+            setStatus("연결되지 않음");
+        }
+
+        connectBtn.addEventListener("click", () => {
+            if (
+                socket &&
+                (
+                    socket.readyState === WebSocket.CONNECTING ||
+                    socket.readyState === WebSocket.OPEN
+                )
+            ) {
+                addMessage(
+                    "이미 연결 중이거나 연결된 상태입니다.",
+                    "error",
+                );
                 return;
             }
 
-            socket.send("안녕하세요");
+            setStatus("연결 중...");
+            connectBtn.disabled = true;
+
+            socket = new WebSocket("ws://localhost:3008");
+
+            socket.addEventListener("open", () => {
+                console.log("WebSocket 연결 성공");
+
+                setStatus("서버 연결 완료");
+
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+
+                nicknameInput.disabled = false;
+                registerBtn.disabled = false;
+
+                nicknameInput.focus();
+            });
+
+            socket.addEventListener("message", (event) => {
+                console.log("서버에서 받은 원본 데이터:", event.data);
+
+                let data;
+
+                try {
+                    data = JSON.parse(event.data);
+                } catch (error) {
+                    console.error("서버 응답 JSON 변환 실패:", error);
+
+                    addMessage(
+                        "서버 응답을 해석할 수 없습니다.",
+                        "error",
+                    );
+
+                    return;
+                }
+
+                console.log("객체로 변환된 데이터:", data);
+
+                if (data.type === "connection") {
+                    addMessage(
+                        data.message,
+                        "system",
+                        data.createdAt,
+                    );
+                    return;
+                }
+
+                if (data.type === "register-success") {
+                    registeredNickname = data.nickname;
+
+                    setStatus(
+                        `${registeredNickname} 닉네임으로 접속 중`,
+                    );
+
+                    nicknameInput.disabled = true;
+                    registerBtn.disabled = true;
+
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+
+                    addMessage(
+                        data.message,
+                        "system",
+                        data.createdAt,
+                    );
+
+                    messageInput.focus();
+                    return;
+                }
+
+                if (data.type === "chat") {
+                    addMessage(
+                        `${data.nickname}: ${data.message}`,
+                        "",
+                        data.createdAt,
+                    );
+                    return;
+                }
+
+                if (data.type === "notification") {
+                    addMessage(
+                        data.message,
+                        "system",
+                        data.createdAt,
+                    );
+                    return;
+                }
+
+                if (data.type === "error") {
+                    addMessage(
+                        data.message,
+                        "error",
+                        data.createdAt,
+                    );
+                }
+            });
+
+            socket.addEventListener("close", () => {
+                console.log("WebSocket 연결 종료");
+
+                addMessage(
+                    "서버와의 연결이 종료되었습니다.",
+                    "system",
+                );
+
+                socket = null;
+                resetUi();
+            });
+
+            socket.addEventListener("error", (error) => {
+                console.error("WebSocket 에러:", error);
+
+                addMessage(
+                    "WebSocket 연결 중 오류가 발생했습니다.",
+                    "error",
+                );
+            });
         });
+
+        disconnectBtn.addEventListener("click", () => {
+            if (!socket) {
+                return;
+            }
+
+            if (
+                socket.readyState === WebSocket.OPEN ||
+                socket.readyState === WebSocket.CONNECTING
+            ) {
+                socket.close();
+            }
+        });
+
+        registerBtn.addEventListener("click", () => {
+            const nickname = nicknameInput.value.trim();
+
+            if (!nickname) {
+                addMessage("닉네임을 입력하세요.", "error");
+                nicknameInput.focus();
+                return;
+            }
+
+            sendJson({
+                type: "register",
+                nickname,
+            });
+        });
+
+        nicknameInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                registerBtn.click();
+            }
+        });
+
+        chatForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+
+            if (!registeredNickname) {
+                addMessage(
+                    "먼저 닉네임을 등록하세요.",
+                    "error",
+                );
+                return;
+            }
+
+            const message = messageInput.value.trim();
+
+            if (!message) {
+                return;
+            }
+
+            const sent = sendJson({
+                type: "chat",
+                message,
+            });
+
+            if (sent) {
+                messageInput.value = "";
+                messageInput.focus();
+            }
+        });
+
+        resetUi();
     </script>
 </body>
 
