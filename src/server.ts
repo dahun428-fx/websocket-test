@@ -4,13 +4,14 @@ import path from "path";
 import WebSocket, { RawData, WebSocketServer } from "ws";
 
 import * as messageRepository from "./repositories/messageRepository";
-import createRoomService, { ChatWebSocket } from "./service/roomService";
+import createRoomService from "./service/roomService";
+import type { ChatWebSocket } from "./types/websocket";
 import type {
     ChatMessage,
-    ParsedMessage,
     RegisterMessage,
     ServerMessage,
 } from "./types/messages";
+import { parseClientMessage } from "./parser/messageParser";
 
 const PORT = process.env.PORT ?? 3008;
 
@@ -62,7 +63,7 @@ function sendRoomHistory(ws: ChatWebSocket, roomId: string): boolean {
     });
 }
 
-function handleRegister(ws: ChatWebSocket, data: ParsedMessage): boolean {
+function handleRegister(ws: ChatWebSocket, data: RegisterMessage): boolean {
     if (ws.nickname || ws.room_id) {
         sendError(ws, "이미 닉네임을 등록하고 방에 입장한 상태입니다.");
         return false;
@@ -133,7 +134,7 @@ function handleRegister(ws: ChatWebSocket, data: ParsedMessage): boolean {
     return true;
 }
 
-function handleChat(ws: ChatWebSocket, data: ParsedMessage): boolean {
+function handleChat(ws: ChatWebSocket, data: ChatMessage): boolean {
     if (!ws.nickname) {
         sendError(ws, "먼저 닉네임을 등록하세요.");
         return false;
@@ -180,32 +181,9 @@ function rawDataToText(rawMessage: RawData): string {
     return rawMessage.toString();
 }
 
-function parseMessage(ws: ChatWebSocket, rawMessage: RawData): ParsedMessage | null {
-    const text = rawDataToText(rawMessage);
-    console.log("수신한 원본 메시지:", text);
-
-    let data: unknown;
-    try {
-        data = JSON.parse(text);
-    } catch (error) {
-        console.error("JSON 변환 실패:", error);
-        sendError(ws, "올바른 JSON 형식이 아닙니다.");
-        return null;
-    }
-
-    if (!data || typeof data !== "object" || Array.isArray(data)) {
-        sendError(ws, "올바른 메시지 객체가 아닙니다.");
-        return null;
-    }
-    if (typeof (data as Record<string, unknown>).type !== "string") {
-        sendError(ws, "메시지 type이 필요합니다.");
-        return null;
-    }
-    return data as ParsedMessage;
-}
 
 function handleMessage(ws: ChatWebSocket, rawMessage: RawData): void {
-    const data = parseMessage(ws, rawMessage);
+    const data = parseClientMessage(rawMessage);
     if (!data) return;
 
     switch (data.type) {

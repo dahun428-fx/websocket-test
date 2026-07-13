@@ -61,7 +61,6 @@ export type ServerMessage =
     | NotificationMessage
     | ErrorMessage;
 
-export interface ParsedMessage {
-    type: string;
-    [key: string]: unknown;
-}
+export type ClientMessage =
+    | RegisterMessage
+    | ChatInputMessage;

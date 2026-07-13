@@ -1,13 +1,17 @@
 import WebSocket, { WebSocketServer } from "ws";
 
 import type { ServerMessage } from "../types/messages";
+import type { ChatWebSocket } from "../types/websocket";
 
-export type ChatWebSocket = WebSocket & {
-    nickname: string | null;
-    room_id: string | null;
-};
+export interface RoomService {
+    broadcastToRoom(roomId: string, payload: ServerMessage): number;
+    getConnectionCount(roomId: string): number;
+    getClients(roomId: string): ChatWebSocket[];
+    join(ws: ChatWebSocket, roomId: string): string;
+    leave(ws: ChatWebSocket | null | undefined): string | null;
+}
 
-function createRoomService(wss: WebSocketServer) {
+function createRoomService(wss: WebSocketServer): RoomService {
     if (!wss || !wss.clients) {
         throw new Error(
             "createRoomService에는 WebSocket.Server 인스턴스가 필요합니다.",
