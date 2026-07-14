@@ -18,7 +18,7 @@ function createContext(): MessageHandlerContext {
             leave: vi.fn(() => null),
         },
         messageRepository: {
-            save: vi.fn(async () => undefined),
+            save: vi.fn(async (_roomId, message) => ({ ...message, id: 1 })),
             get: vi.fn(async () => []),
             clear: vi.fn(async () => undefined),
         },

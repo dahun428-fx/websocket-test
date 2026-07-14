@@ -5,9 +5,9 @@ import os from "node:os";
 
 import { closeDatabase, initializeDatabase } from "../database/database";
 import { messageRepository } from "./messageRepository";
-import type { ChatMessage } from "../types/messages";
+import type { NewChatMessage } from "../types/messages";
 
-function createMessage(index: number): ChatMessage {
+function createMessage(index: number): NewChatMessage {
     return {
         type: "chat",
         nickname: "neo",
@@ -35,9 +35,11 @@ describe("messageRepository", () => {
     });
 
     it("stores messages by room and returns a copy", async () => {
-        await messageRepository.save("room-1", createMessage(1));
+        const savedMessage = await messageRepository.save("room-1", createMessage(1));
         const messages = await messageRepository.get("room-1");
 
+        expect(savedMessage.id).toBeGreaterThan(0);
+        expect(messages[0]?.id).toBe(savedMessage.id);
         messages.pop();
 
         await expect(messageRepository.get("room-1")).resolves.toHaveLength(1);
@@ -51,6 +53,7 @@ describe("messageRepository", () => {
 
         const messages = await messageRepository.get("room-1");
         expect(messages).toHaveLength(100);
+        expect(messages.every((message) => message.id > 0)).toBe(true);
         expect(messages[0]?.message).toBe("message-1");
     });
 });

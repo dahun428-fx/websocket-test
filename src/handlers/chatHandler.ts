@@ -1,5 +1,5 @@
 import type { ChatHandler } from "../types/handler";
-import type { ChatMessage } from "../types/messages";
+import type { ChatMessage, NewChatMessage } from "../types/messages";
 
 export const chatHandler: ChatHandler = {
     type: 'chat',
@@ -38,7 +38,7 @@ export const chatHandler: ChatHandler = {
             return false;
         }
 
-        const chatMessage: ChatMessage = {
+        const chatMessage: NewChatMessage = {
             type: "chat",
             nickname,
             room_id: roomId,
@@ -46,8 +46,8 @@ export const chatHandler: ChatHandler = {
             createdAt: createTimestamp(),
         };
         console.log(`${roomId}방에 저장하고 브로드캐스트할 채팅:`, chatMessage);
-        await messageRepository.save(roomId, chatMessage);
-        roomService.broadcastToRoom(roomId, chatMessage);
+        const savedChatMessage = await messageRepository.save(roomId, chatMessage);
+        roomService.broadcastToRoom(roomId, savedChatMessage);
         return true;
     }
 };

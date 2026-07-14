@@ -35,13 +35,16 @@ export interface RegisterSuccessMessage {
     message: string;
     createdAt: string;
 }
-
-export interface ChatMessage {
+export interface NewChatMessage {
     type: "chat";
     nickname: string;
     room_id: string;
     message: string;
     createdAt: string;
+}
+
+export interface ChatMessage extends NewChatMessage {
+    id: number;
 }
 
 export interface HistoryMessage {

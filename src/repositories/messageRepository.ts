@@ -1,7 +1,8 @@
 import { getDatabase } from "../database/database";
-import type { ChatMessage } from "../types/messages";
+import type { ChatMessage, NewChatMessage } from "../types/messages";
 
 interface MessageRow {
+    id: number;
     room_id: string;
     nickname: string;
     message: string;
@@ -11,8 +12,8 @@ interface MessageRow {
 export interface MessageRepository {
     save: (
         roomId: string,
-        message: ChatMessage,
-    ) => Promise<void>;
+        message: NewChatMessage,
+    ) => Promise<ChatMessage>;
 
     get: (
         roomId: string,
@@ -24,12 +25,12 @@ export interface MessageRepository {
 
 async function save(
     roomId: string,
-    message: ChatMessage,
-): Promise<void> {
+    message: NewChatMessage,
+): Promise<ChatMessage> {
 
     const db = getDatabase();
 
-    await db.run(
+    const result = await db.run(
         `
         INSERT INTO messages (
             room_id,
@@ -45,6 +46,14 @@ async function save(
         message.createdAt,
     )
 
+    if (typeof result.lastID !== "number") {
+        throw new Error("저장된 메시지 ID를 확인할 수 없습니다.");
+    }
+
+    return {
+        ...message,
+        id: result.lastID,
+    };
 }
 
 async function get(
@@ -56,6 +65,7 @@ async function get(
     const rows = await db.all<MessageRow[]>(
         `
         SELECT
+            id,
             room_id,
             nickname,
             message,
@@ -73,6 +83,7 @@ async function get(
         .reverse()
         .map((row) => ({
             type: "chat",
+            id: row.id,
             room_id: row.room_id,
             nickname: row.nickname,
             message: row.message,
