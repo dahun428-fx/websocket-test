@@ -14,24 +14,26 @@ function createMessage(index: number): ChatMessage {
 }
 
 describe("messageRepository", () => {
-    beforeEach(() => messageRepository.clear());
+    beforeEach(async () => {
+        await messageRepository.clear();
+    });
 
-    it("stores messages by room and returns a copy", () => {
-        messageRepository.save("room-1", createMessage(1));
-        const messages = messageRepository.get("room-1");
+    it("stores messages by room and returns a copy", async () => {
+        await messageRepository.save("room-1", createMessage(1));
+        const messages = await messageRepository.get("room-1");
 
         messages.pop();
 
-        expect(messageRepository.get("room-1")).toHaveLength(1);
-        expect(messageRepository.get("room-2")).toEqual([]);
+        await expect(messageRepository.get("room-1")).resolves.toHaveLength(1);
+        await expect(messageRepository.get("room-2")).resolves.toEqual([]);
     });
 
-    it("keeps only the latest 100 messages in a room", () => {
+    it("keeps only the latest 100 messages in a room", async () => {
         for (let index = 0; index < 101; index += 1) {
-            messageRepository.save("room-1", createMessage(index));
+            await messageRepository.save("room-1", createMessage(index));
         }
 
-        const messages = messageRepository.get("room-1");
+        const messages = await messageRepository.get("room-1");
         expect(messages).toHaveLength(100);
         expect(messages[0]?.message).toBe("message-1");
     });

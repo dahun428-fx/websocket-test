@@ -4,14 +4,15 @@ import { MessageHandlerContext } from "../types/handler";
 import { ClientMessage } from "../types/messages";
 import { ChatWebSocket } from "../types/websocket";
 
-export function dispatchMessage(ws: ChatWebSocket, message: ClientMessage, context: MessageHandlerContext): void {
+export async function dispatchMessage
+    (ws: ChatWebSocket, message: ClientMessage, context: MessageHandlerContext): Promise<void> {
 
     switch (message.type) {
         case "register":
-            registerHandler.handle(ws, message, context);
+            await registerHandler.handle(ws, message, context);
             return;
         case "chat":
-            chatHandler.handle(ws, message, context);
+            await chatHandler.handle(ws, message, context);
             return;
         default:
             return;

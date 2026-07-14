@@ -101,9 +101,9 @@ function sendError(ws, message) {
  * 특정 방의 기존 채팅 내역을
  * 현재 사용자에게만 전송합니다.
  */
-function sendRoomHistory(ws, roomId) {
+async function sendRoomHistory(ws, roomId) {
     const messages =
-        messageRepository.get(roomId);
+        await messageRepository.get(roomId);
 
     return sendJson(ws, {
         type: "history",

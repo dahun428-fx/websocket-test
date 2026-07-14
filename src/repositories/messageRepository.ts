@@ -4,10 +4,10 @@ const MAX_MESSAGES_PER_ROOM = 100;
 
 const roomMessages = new Map<string, ChatMessage[]>();
 
-function save(
+async function save(
     roomId: string,
     message: ChatMessage,
-): void {
+): Promise<void> {
     const messages =
         roomMessages.get(roomId) ?? [];
 
@@ -26,16 +26,15 @@ function save(
     );
 }
 
-function get(
+async function get(
     roomId: string,
-): ChatMessage[] {
+): Promise<ChatMessage[]> {
     const messages =
         roomMessages.get(roomId) ?? [];
-
     return [...messages];
 }
 
-function clear(): void {
+async function clear(): Promise<void> {
     roomMessages.clear();
 }
 
@@ -43,13 +42,13 @@ export interface MessageRepository {
     save: (
         roomId: string,
         message: ChatMessage,
-    ) => void;
+    ) => Promise<void>;
 
     get: (
         roomId: string,
-    ) => ChatMessage[];
+    ) => Promise<ChatMessage[]>;
 
-    clear: () => void;
+    clear: () => Promise<void>;
 }
 
 export const messageRepository:

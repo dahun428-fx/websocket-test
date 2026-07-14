@@ -17,17 +17,17 @@ export interface MessageHandlerContext {
     sendJson: (
         ws: ChatWebSocket,
         payload: ServerMessage,
-    ) => boolean;
+    ) => Promise<void>;
 
     sendError: (
         ws: ChatWebSocket,
         code: ErrorCode,
-    ) => boolean;
+    ) => Promise<void>;
 
     sendRoomHistory: (
         ws: ChatWebSocket,
         roomId: string,
-    ) => boolean;
+    ) => Promise<void>;
 
     createTimestamp: () => string;
 }
@@ -38,7 +38,7 @@ export interface RegisterHandler {
         ws: ChatWebSocket,
         message: RegisterMessage,
         context: MessageHandlerContext,
-    ) => boolean;
+    ) => Promise<boolean>;
 }
 
 export interface ChatHandler {
@@ -47,7 +47,7 @@ export interface ChatHandler {
         ws: ChatWebSocket,
         message: ChatInputMessage,
         context: MessageHandlerContext,
-    ) => boolean;
+    ) => Promise<boolean>;
 }
 
 export type MessageHandler = RegisterHandler | ChatHandler;

@@ -12,6 +12,7 @@ import type {
 import type { MessageHandlerContext } from "./types/handler";
 import { parseClientMessage } from "./parser/messageParser";
 import { dispatchMessage } from "./dispatcher/messageDispatcher";
+import { enqueueMessage } from "./queue/messageQueue";
 import { ERROR_MESSAGES } from "./errors/errorMessages";
 import type { ErrorCode } from "./errors/errorMessages";
 
@@ -38,21 +39,28 @@ const server = http.createServer(
 const wss = new WebSocketServer({ server });
 const roomService = createRoomService(wss);
 
-function sendJson(ws: ChatWebSocket, payload: ServerMessage): boolean {
-    if (ws.readyState !== WebSocket.OPEN) {
-        console.error("WebSocket이 열린 상태가 아니므로 메시지를 전송할 수 없습니다.");
-        return false;
-    }
+function sendJson(ws: ChatWebSocket, payload: ServerMessage): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (ws.readyState !== WebSocket.OPEN) {
+            reject(new Error("WebSocket이 열린 상태가 아니므로 메시지를 전송할 수 없습니다."));
+            return;
+        }
 
-    ws.send(JSON.stringify(payload));
-    return true;
+        ws.send(JSON.stringify(payload), (error) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve();
+        });
+    });
 }
 
 function createTimestamp(): string {
     return new Date().toISOString();
 }
 
-function sendError(ws: ChatWebSocket, code: ErrorCode): boolean {
+function sendError(ws: ChatWebSocket, code: ErrorCode): Promise<void> {
     return sendJson(ws, {
         type: "error",
         code,
@@ -61,11 +69,23 @@ function sendError(ws: ChatWebSocket, code: ErrorCode): boolean {
     });
 }
 
-function sendRoomHistory(ws: ChatWebSocket, roomId: string): boolean {
+async function sendErrorSafely(
+    ws: ChatWebSocket,
+    code: ErrorCode,
+): Promise<void> {
+    try {
+        await sendError(ws, code);
+    } catch (error) {
+        console.error("오류 응답 전송 실패:", error);
+    }
+}
+
+async function sendRoomHistory(ws: ChatWebSocket, roomId: string): Promise<void> {
+    const messages = await messageRepository.get(roomId);
     return sendJson(ws, {
         type: "history",
         room_id: roomId,
-        messages: messageRepository.get(roomId),
+        messages,
         createdAt: createTimestamp(),
     });
 }
@@ -79,14 +99,18 @@ const messageHandlerContext: MessageHandlerContext = {
     createTimestamp,
 };
 
-function handleMessage(ws: ChatWebSocket, rawMessage: RawData): void {
+async function handleMessage(ws: ChatWebSocket, rawMessage: RawData): Promise<void> {
     const data = parseClientMessage(rawMessage);
     if (!data) {
-        sendError(ws, "MESSAGE_PARSE_FAILED");
+        await sendErrorSafely(ws, "MESSAGE_PARSE_FAILED");
         return;
     }
-
-    dispatchMessage(ws, data, messageHandlerContext);
+    try {
+        await dispatchMessage(ws, data, messageHandlerContext);
+    } catch (error) {
+        console.error("메시지 처리 중 오류 발생:", error);
+        await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
+    }
 }
 
 function handleClose(ws: ChatWebSocket): void {
@@ -113,15 +137,27 @@ wss.on("connection", (connection) => {
     const ws = connection as ChatWebSocket;
     ws.nickname = null;
     ws.room_id = null;
+    ws.messageQueue = Promise.resolve();
+    ws.isClosing = false;
     console.log("새로운 클라이언트 연결");
     console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
-    sendJson(ws, {
+    void sendJson(ws, {
         type: "connection",
         message: "서버에 연결되었습니다.",
         createdAt: createTimestamp(),
+    }).catch((error) => {
+        console.error("연결 안내 메시지 전송 실패:", error);
     });
-    ws.on("message", (rawMessage) => handleMessage(ws, rawMessage));
-    ws.on("close", () => handleClose(ws));
+    ws.on("message", (rawMessage) => {
+        enqueueMessage(ws, () => handleMessage(ws, rawMessage), async (error) => {
+                console.error("메시지 queue 처리 실패:", error);
+                await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
+        });
+    });
+    ws.on("close", () => {
+        ws.isClosing = true;
+        handleClose(ws);
+    });
     ws.on("error", (error) => console.error("WebSocket 연결 에러:", error));
 });
 

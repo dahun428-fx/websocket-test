@@ -9,6 +9,7 @@ export const ERROR_MESSAGES = {
     ROOM_NOT_JOINED: "먼저 채팅방에 입장하세요.",
     CHAT_REQUIRED: "메시지를 입력하세요.",
     CHAT_TOO_LONG: "메시지는 1000자 이하로 입력하세요.",
+    INTERNAL_SERVER_ERROR: "서버 내부 오류가 발생했습니다.",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_MESSAGES;

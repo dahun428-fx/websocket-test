@@ -3,7 +3,7 @@ import type { RegisterMessage } from "../types/messages";
 
 export const registerHandler: RegisterHandler = {
     type: 'register',
-    handle: (
+    handle: async (
         ws,
         data,
         context,
@@ -11,26 +11,26 @@ export const registerHandler: RegisterHandler = {
         const { roomService, sendJson, sendError, sendRoomHistory, createTimestamp } = context;
 
         if (ws.nickname || ws.room_id) {
-            sendError(ws, "ALREADY_REGISTERED");
+            await sendError(ws, "ALREADY_REGISTERED");
             return false;
         }
 
         const nickname = data.nickname.trim();
         const roomId = data.room_id.trim();
         if (!nickname) {
-            sendError(ws, "NICKNAME_REQUIRED");
+            await sendError(ws, "NICKNAME_REQUIRED");
             return false;
         }
         if (!roomId) {
-            sendError(ws, "ROOM_ID_REQUIRED");
+            await sendError(ws, "ROOM_ID_REQUIRED");
             return false;
         }
         if (nickname.length > 20) {
-            sendError(ws, "NICKNAME_TOO_LONG");
+            await sendError(ws, "NICKNAME_TOO_LONG");
             return false;
         }
         if (roomId.length > 20) {
-            sendError(ws, "ROOM_ID_TOO_LONG");
+            await sendError(ws, "ROOM_ID_TOO_LONG");
             return false;
         }
 
@@ -39,31 +39,31 @@ export const registerHandler: RegisterHandler = {
             nickname,
             room_id: roomId,
         };
+        const joinedRoomId = roomService.join(ws, registerMessage.room_id);
         ws.nickname = registerMessage.nickname;
-        roomService.join(ws, registerMessage.room_id);
-
-        const joinedRoomId = ws.room_id;
-        if (!joinedRoomId) {
-            return false;
-        }
 
         const roomConnectionCount = roomService.getConnectionCount(joinedRoomId);
         console.log(`등록 완료: nickname=${ws.nickname}, room_id=${joinedRoomId}`);
         console.log(`${joinedRoomId}방 연결 수:`, roomConnectionCount);
 
-        sendJson(ws, {
+        await sendJson(ws, {
             type: "register-success",
-            nickname: ws.nickname,
+            nickname,
             room_id: joinedRoomId,
             roomConnectionCount,
-            message: `${joinedRoomId}방에 ${ws.nickname} 닉네임으로 입장했습니다.`,
+            message: `${joinedRoomId}방에 ${nickname} 닉네임으로 입장했습니다.`,
             createdAt: createTimestamp(),
         });
-        sendRoomHistory(ws, joinedRoomId);
+        await sendRoomHistory(ws, joinedRoomId);
+
+        if (ws.nickname !== nickname || ws.room_id !== joinedRoomId) {
+            return false;
+        }
+
         roomService.broadcastToRoom(joinedRoomId, {
             type: "notification",
             room_id: joinedRoomId,
-            message: `${ws.nickname}님이 입장했습니다.`,
+            message: `${nickname}님이 입장했습니다.`,
             roomConnectionCount,
             createdAt: createTimestamp(),
         });
