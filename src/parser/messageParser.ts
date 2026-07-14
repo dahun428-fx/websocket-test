@@ -1,14 +1,16 @@
 import type { RawData } from "ws";
 
-import { isClientMessage } from "../guards/messageGuards";
-
-import type { ClientMessage } from "../types/messages";
+import {
+    clientMessageSchema,
+    type ClientMessage,
+} from "../types/messages";
+import { rawDataToText } from "./rawDataToText";
 
 export function parseClientMessage(
     rawMessage: RawData,
 ): ClientMessage | null {
 
-    const text = rawMessage.toString();
+    const text = rawDataToText(rawMessage);
 
     let parsed: unknown;
 
@@ -18,9 +20,11 @@ export function parseClientMessage(
         return null;
     }
 
-    if (!isClientMessage(parsed)) {
+    const result = clientMessageSchema.safeParse(parsed);
+
+    if (!result.success) {
         return null;
     }
 
-    return parsed;
+    return result.data;
 }

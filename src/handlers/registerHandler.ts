@@ -1,5 +1,5 @@
-import { RegisterHandler } from "../types/handler";
-import { RegisterMessage } from "../types/messages";
+import type { RegisterHandler } from "../types/handler";
+import type { RegisterMessage } from "../types/messages";
 
 export const registerHandler: RegisterHandler = {
     type: 'register',
@@ -11,26 +11,26 @@ export const registerHandler: RegisterHandler = {
         const { roomService, sendJson, sendError, sendRoomHistory, createTimestamp } = context;
 
         if (ws.nickname || ws.room_id) {
-            sendError(ws, "이미 닉네임을 등록하고 방에 입장한 상태입니다.");
+            sendError(ws, "ALREADY_REGISTERED");
             return false;
         }
 
         const nickname = data.nickname.trim();
         const roomId = data.room_id.trim();
         if (!nickname) {
-            sendError(ws, "닉네임을 입력하세요.");
+            sendError(ws, "NICKNAME_REQUIRED");
             return false;
         }
         if (!roomId) {
-            sendError(ws, "방 ID를 입력하세요.");
+            sendError(ws, "ROOM_ID_REQUIRED");
             return false;
         }
         if (nickname.length > 20) {
-            sendError(ws, "닉네임은 20자 이하로 입력하세요.");
+            sendError(ws, "NICKNAME_TOO_LONG");
             return false;
         }
         if (roomId.length > 20) {
-            sendError(ws, "방 ID는 20자 이하로 입력하세요.");
+            sendError(ws, "ROOM_ID_TOO_LONG");
             return false;
         }
 
@@ -67,5 +67,6 @@ export const registerHandler: RegisterHandler = {
             roomConnectionCount,
             createdAt: createTimestamp(),
         });
+        return true;
     }
-}
+};

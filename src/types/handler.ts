@@ -1,14 +1,18 @@
 import type {
+    ChatInputMessage,
     ClientMessage,
     RegisterMessage,
     ServerMessage,
 } from "./messages";
 
 import type { ChatWebSocket } from "./websocket";
+import type { ErrorCode } from "../errors/errorMessages";
+import type { MessageRepository } from "../repositories/messageRepository";
 import type { RoomService } from "../service/roomService";
 
 export interface MessageHandlerContext {
     roomService: RoomService;
+    messageRepository: MessageRepository;
 
     sendJson: (
         ws: ChatWebSocket,
@@ -17,7 +21,7 @@ export interface MessageHandlerContext {
 
     sendError: (
         ws: ChatWebSocket,
-        message: string,
+        code: ErrorCode,
     ) => boolean;
 
     sendRoomHistory: (
@@ -34,16 +38,16 @@ export interface RegisterHandler {
         ws: ChatWebSocket,
         message: RegisterMessage,
         context: MessageHandlerContext,
-    ) => void;
+    ) => boolean;
 }
 
 export interface ChatHandler {
     type: 'chat';
     handle: (
         ws: ChatWebSocket,
-        message: ClientMessage,
+        message: ChatInputMessage,
         context: MessageHandlerContext,
-    ) => void;
+    ) => boolean;
 }
 
 export type MessageHandler = RegisterHandler | ChatHandler;

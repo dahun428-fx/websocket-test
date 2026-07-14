@@ -1,13 +1,25 @@
-export interface RegisterMessage {
-    type: "register";
-    nickname: string;
-    room_id: string;
-}
+import { z } from "zod";
 
-export interface ChatInputMessage {
-    type: "chat";
-    message: string;
-}
+import type { ErrorCode } from "../errors/errorMessages";
+
+export const registerMessageSchema = z.object({
+    type: z.literal("register"),
+    nickname: z.string(),
+    room_id: z.string(),
+});
+
+export const chatInputMessageSchema = z.object({
+    type: z.literal("chat"),
+    message: z.string(),
+});
+
+export const clientMessageSchema = z.discriminatedUnion("type", [
+    registerMessageSchema,
+    chatInputMessageSchema,
+]);
+
+export type RegisterMessage = z.infer<typeof registerMessageSchema>;
+export type ChatInputMessage = z.infer<typeof chatInputMessageSchema>;
 
 export interface ConnectionMessage {
     type: "connection";
@@ -49,6 +61,7 @@ export interface NotificationMessage {
 
 export interface ErrorMessage {
     type: "error";
+    code: ErrorCode;
     message: string;
     createdAt: string;
 }
@@ -61,6 +74,4 @@ export type ServerMessage =
     | NotificationMessage
     | ErrorMessage;
 
-export type ClientMessage =
-    | RegisterMessage
-    | ChatInputMessage;
+export type ClientMessage = z.infer<typeof clientMessageSchema>;
