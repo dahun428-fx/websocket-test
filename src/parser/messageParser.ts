@@ -3,7 +3,7 @@ import type { RawData } from "ws";
 import {
     clientMessageSchema,
     type ClientMessage,
-} from "../types/messages";
+} from "../schemas/clientMessageSchema";
 import { rawDataToText } from "./rawDataToText";
 
 export function parseClientMessage(

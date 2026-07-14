@@ -1,25 +1,10 @@
-import { z } from "zod";
-
 import type { ErrorCode } from "../errors/errorMessages";
-
-export const registerMessageSchema = z.object({
-    type: z.literal("register"),
-    nickname: z.string(),
-    room_id: z.string(),
-});
-
-export const chatInputMessageSchema = z.object({
-    type: z.literal("chat"),
-    message: z.string(),
-});
-
-export const clientMessageSchema = z.discriminatedUnion("type", [
-    registerMessageSchema,
-    chatInputMessageSchema,
-]);
-
-export type RegisterMessage = z.infer<typeof registerMessageSchema>;
-export type ChatInputMessage = z.infer<typeof chatInputMessageSchema>;
+export type {
+    ChatInputMessage,
+    ClientMessage,
+    HistoryRequestMessage,
+    RegisterMessage,
+} from "../schemas/clientMessageSchema";
 
 export interface ConnectionMessage {
     type: "connection";
@@ -52,6 +37,14 @@ export interface HistoryMessage {
     room_id: string;
     messages: ChatMessage[];
     createdAt: string;
+    hasMore: boolean;
+    nextBeforeId: number | null;
+}
+
+export interface MessageHistoryPage {
+    messages: ChatMessage[];
+    hasMore: boolean;
+    nextBeforeId: number | null;
 }
 
 export interface NotificationMessage {
@@ -76,5 +69,3 @@ export type ServerMessage =
     | ChatMessage
     | NotificationMessage
     | ErrorMessage;
-
-export type ClientMessage = z.infer<typeof clientMessageSchema>;

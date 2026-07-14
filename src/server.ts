@@ -84,11 +84,14 @@ async function sendErrorSafely(
 }
 
 async function sendRoomHistory(ws: ChatWebSocket, roomId: string): Promise<void> {
-    const messages = await messageRepository.get(roomId);
+    const historyPage = await messageRepository.get(roomId);
+    const { messages, hasMore, nextBeforeId } = historyPage;
     return sendJson(ws, {
         type: "history",
         room_id: roomId,
         messages,
+        hasMore,
+        nextBeforeId,
         createdAt: createTimestamp(),
     });
 }

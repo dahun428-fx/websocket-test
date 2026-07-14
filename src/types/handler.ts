@@ -9,6 +9,7 @@ import type { ChatWebSocket } from "./websocket";
 import type { ErrorCode } from "../errors/errorMessages";
 import type { MessageRepository } from "../repositories/messageRepository";
 import type { RoomService } from "../service/roomService";
+import type { HistoryRequestMessage } from "../schemas/clientMessageSchema";
 
 export interface MessageHandlerContext {
     roomService: RoomService;
@@ -50,6 +51,15 @@ export interface ChatHandler {
     ) => Promise<boolean>;
 }
 
-export type MessageHandler = RegisterHandler | ChatHandler;
+export interface HistoryHandler {
+    type: 'history-request',
+    handle: (
+        ws: ChatWebSocket,
+        message: HistoryRequestMessage,
+        context: MessageHandlerContext
+    ) => Promise<boolean>;
+}
+
+export type MessageHandler = RegisterHandler | ChatHandler | HistoryHandler;
 
 export type MessageType = ClientMessage['type'];

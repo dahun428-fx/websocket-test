@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { chatHandler } from "./chatHandler";
+import { historyHandler } from "./historyHandler";
 import { registerHandler } from "./registerHandler";
 import type { MessageHandlerContext } from "../types/handler";
 import type { ChatWebSocket } from "../types/websocket";
@@ -19,7 +20,8 @@ function createContext(): MessageHandlerContext {
         },
         messageRepository: {
             save: vi.fn(async (_roomId, message) => ({ ...message, id: 1 })),
-            get: vi.fn(async () => []),
+            get: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
+            getBefore: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
             clear: vi.fn(async () => undefined),
         },
         sendJson: vi.fn(async () => undefined),
@@ -123,5 +125,38 @@ describe("message handlers", () => {
 
         await expect(registration).resolves.toBe(false);
         expect(context.roomService.broadcastToRoom).not.toHaveBeenCalled();
+    });
+
+    it("sends a cursor history page only to a registered room member", async () => {
+        const context = createContext();
+        const socket = createSocket();
+        socket.room_id = "room-1";
+        const page = {
+            messages: [{
+                id: 10, type: "chat" as const, nickname: "neo", room_id: "room-1",
+                message: "hello", createdAt: "2026-01-01T00:00:00.000Z",
+            }],
+            hasMore: true,
+            nextBeforeId: 10,
+        };
+        context.messageRepository.getBefore = vi.fn(async () => page);
+
+        await expect(historyHandler.handle(socket, {
+            type: "history-request", before_id: 20, limit: 30,
+        }, context)).resolves.toBe(true);
+        expect(context.messageRepository.getBefore).toHaveBeenCalledWith("room-1", 20, 30);
+        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
+            type: "history", hasMore: true, nextBeforeId: 10,
+        }));
+    });
+
+    it("rejects a history request before joining a room", async () => {
+        const context = createContext();
+
+        await expect(historyHandler.handle(createSocket(), {
+            type: "history-request", before_id: 10, limit: 30,
+        }, context)).resolves.toBe(false);
+        expect(context.sendError).toHaveBeenCalledWith(expect.anything(), "ROOM_NOT_JOINED");
+        expect(context.messageRepository.getBefore).not.toHaveBeenCalled();
     });
 });

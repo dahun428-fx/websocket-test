@@ -1,5 +1,5 @@
 import { getDatabase } from "../database/database";
-import type { ChatMessage, NewChatMessage } from "../types/messages";
+import type { ChatMessage, MessageHistoryPage, NewChatMessage } from "../types/messages";
 
 interface MessageRow {
     id: number;
@@ -7,6 +7,14 @@ interface MessageRow {
     nickname: string;
     message: string;
     created_at: string;
+}
+
+function toChatMessage(row: MessageRow): ChatMessage {
+    const { id, room_id, nickname, message, created_at: createdAt } = row
+    return {
+        type: 'chat',
+        id, room_id, nickname, message, createdAt,
+    }
 }
 
 export interface MessageRepository {
@@ -17,7 +25,13 @@ export interface MessageRepository {
 
     get: (
         roomId: string,
-    ) => Promise<ChatMessage[]>;
+    ) => Promise<MessageHistoryPage>;
+
+    getBefore: (
+        roomId: string,
+        beforeId: number,
+        limit: number,
+    ) => Promise<MessageHistoryPage>;
 
     clear: () => Promise<void>;
 }
@@ -58,37 +72,80 @@ async function save(
 
 async function get(
     roomId: string,
-): Promise<ChatMessage[]> {
+): Promise<MessageHistoryPage> {
 
     const db = getDatabase();
+    const limit = 100;
 
-    const rows = await db.all<MessageRow[]>(
-        `
-        SELECT
-            id,
-            room_id,
-            nickname,
-            message,
-            created_at
-        FROM messages
-        WHERE room_id = ?
-        ORDER BY created_at DESC, id DESC
-        LIMIT 100
-        `,
-        roomId,
-    );
+    const rows =
+        await db.all<MessageRow[]>(
+            `
+            SELECT
+                id,
+                room_id,
+                nickname,
+                message,
+                created_at
+            FROM messages
+            WHERE room_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            `,
+            roomId,
+            limit + 1,
+        );
 
+    const hasMore =
+        rows.length > limit;
 
-    return rows
-        .reverse()
-        .map((row) => ({
-            type: "chat",
-            id: row.id,
-            room_id: row.room_id,
-            nickname: row.nickname,
-            message: row.message,
-            createdAt: row.created_at,
-        }));
+    const selectedRows =
+        hasMore
+            ? rows.slice(0, limit)
+            : rows;
+
+    const messages = selectedRows
+            .reverse()
+            .map(toChatMessage);
+
+    return {
+        messages,
+        hasMore,
+        nextBeforeId: hasMore ? (messages[0]?.id ?? null) : null,
+    };
+}
+
+async function getBefore(roomId: string, beforeId: number, limit: number): Promise<MessageHistoryPage> {
+    const db = getDatabase();
+    const rows =
+        await db.all<MessageRow[]>(
+            `
+            SELECT
+                id,
+                room_id,
+                nickname,
+                message,
+                created_at
+            FROM messages
+            WHERE room_id = ?
+              AND id < ?
+            ORDER BY id DESC
+            LIMIT ?
+            `,
+            roomId,
+            beforeId,
+            limit + 1,
+        );
+
+    const hasMore = rows.length > limit;
+    const selectedRows = hasMore ? rows.slice(0, limit) : rows;
+
+    const messages = selectedRows.reverse().map(toChatMessage);
+
+    return {
+        messages,
+        hasMore,
+        nextBeforeId: hasMore ? (messages[0]?.id ?? null) : null,
+    };
 }
 
 async function clear(): Promise<void> {
@@ -105,5 +162,6 @@ export const messageRepository:
     MessageRepository = {
     save,
     get,
+    getBefore,
     clear,
 };

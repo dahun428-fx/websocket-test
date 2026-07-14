@@ -13,7 +13,8 @@ describe("dispatchMessage", () => {
             },
             messageRepository: {
                 save: vi.fn(async (_roomId, message) => ({ ...message, id: 1 })),
-                get: vi.fn(async () => []),
+                get: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
+                getBefore: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
                 clear: vi.fn(async () => undefined),
             },
             sendJson: vi.fn(async () => undefined), sendError: vi.fn(async () => undefined),
