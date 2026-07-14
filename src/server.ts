@@ -15,8 +15,11 @@ import { dispatchMessage } from "./dispatcher/messageDispatcher";
 import { enqueueMessage } from "./queue/messageQueue";
 import { ERROR_MESSAGES } from "./errors/errorMessages";
 import type { ErrorCode } from "./errors/errorMessages";
+import { closeDatabase, initializeDatabase } from "./database/database";
 
-const PORT = process.env.PORT ?? 3009;
+const PORT = Number(process.env.PORT) || 3010;
+const SHUTDOWN_TIMEOUT_MS = 5_000;
+let isShuttingDown = false;
 
 const server = http.createServer(
     (_req: IncomingMessage, res: ServerResponse) => {
@@ -114,6 +117,8 @@ async function handleMessage(ws: ChatWebSocket, rawMessage: RawData): Promise<vo
 }
 
 function handleClose(ws: ChatWebSocket): void {
+    ws.isClosed = true;
+
     const nickname = ws.nickname;
     const roomId = ws.room_id;
     roomService.leave(ws);
@@ -138,7 +143,7 @@ wss.on("connection", (connection) => {
     ws.nickname = null;
     ws.room_id = null;
     ws.messageQueue = Promise.resolve();
-    ws.isClosing = false;
+    ws.isClosed = false;
     console.log("새로운 클라이언트 연결");
     console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
     void sendJson(ws, {
@@ -150,17 +155,96 @@ wss.on("connection", (connection) => {
     });
     ws.on("message", (rawMessage) => {
         enqueueMessage(ws, () => handleMessage(ws, rawMessage), async (error) => {
-                console.error("메시지 queue 처리 실패:", error);
-                await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
+            console.error("메시지 queue 처리 실패:", error);
+            await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
         });
     });
-    ws.on("close", () => {
-        ws.isClosing = true;
-        handleClose(ws);
-    });
+    ws.on("close", () => handleClose(ws));
     ws.on("error", (error) => console.error("WebSocket 연결 에러:", error));
 });
 
-server.listen(PORT, () => {
-    console.log(`서버 실행: http://localhost:${PORT}`);
+async function startServer(): Promise<void> {
+    try {
+        await initializeDatabase();
+
+        await new Promise<void>((resolve, reject) => {
+            server.once("error", reject);
+            server.listen(PORT, () => {
+                server.off("error", reject);
+                console.log(`서버 실행: http://localhost:${PORT}`);
+                resolve();
+            });
+        });
+    } catch (error) {
+        console.error("서버 시작 중 오류 발생:", error);
+        await closeDatabase();
+        throw error;
+    }
+}
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+    if (isShuttingDown) {
+        return;
+    }
+
+    isShuttingDown = true;
+    console.log(`\n${signal} 신호 수신, 서버 종료 중...`);
+
+    wss.clients.forEach((client) => {
+        client.close(1001, "Server shutting down");
+    });
+
+    const forceTerminateTimer = setTimeout(() => {
+        wss.clients.forEach((client) => {
+            client.terminate();
+        });
+    }, SHUTDOWN_TIMEOUT_MS);
+    forceTerminateTimer.unref();
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            wss.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve();
+            });
+        });
+
+        await new Promise<void>((resolve, reject) => {
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve();
+            });
+        });
+
+        await closeDatabase();
+    } catch (error) {
+        console.error("서버 종료 실패:", error);
+        process.exitCode = 1;
+    } finally {
+        clearTimeout(forceTerminateTimer);
+    }
+}
+
+process.once("SIGINT", () => {
+    void shutdown("SIGINT");
 });
+
+process.once("SIGTERM", () => {
+    void shutdown("SIGTERM");
+});
+
+if (require.main === module) {
+    void startServer().catch(() => {
+        process.exitCode = 1;
+    });
+}
+
+export { server, startServer, shutdown };

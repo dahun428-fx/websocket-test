@@ -5,7 +5,7 @@ import type { ChatWebSocket } from "../types/websocket";
 
 function createSocket(): ChatWebSocket {
     return {
-        isClosing: false,
+        isClosed: false,
         messageQueue: Promise.resolve(),
     } as ChatWebSocket;
 }
@@ -24,7 +24,7 @@ describe("enqueueMessage", () => {
         enqueueMessage(socket, queuedTask, onError);
 
         await vi.waitFor(() => expect(firstTask).toHaveBeenCalledOnce());
-        socket.isClosing = true;
+        socket.isClosed = true;
         resolveFirstTask?.();
 
         await socket.messageQueue;

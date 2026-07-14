@@ -10,14 +10,14 @@ export function enqueueMessage(
 ): void {
     ws.messageQueue = ws.messageQueue
         .then(async () => {
-            if (ws.isClosing) {
+            if (ws.isClosed) {
                 return;
             }
 
             await task();
         })
         .catch(async (error) => {
-            if (!ws.isClosing) {
+            if (!ws.isClosed) {
                 await onError(error);
             }
         });

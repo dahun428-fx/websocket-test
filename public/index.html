@@ -378,8 +378,13 @@
                 setStatus("연결 중...");
                 connectBtn.disabled = true;
 
+                const protocol =
+                    window.location.protocol === "https:"
+                        ? "wss:"
+                        : "ws:";
+
                 socket = new WebSocket(
-                    "ws://localhost:3008",
+                    `${protocol}//${window.location.host}`,
                 );
 
                 socket.addEventListener(

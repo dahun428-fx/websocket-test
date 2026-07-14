@@ -1,5 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 
+import { closeDatabase, initializeDatabase } from "../database/database";
 import { messageRepository } from "./messageRepository";
 import type { ChatMessage } from "../types/messages";
 
@@ -14,8 +18,20 @@ function createMessage(index: number): ChatMessage {
 }
 
 describe("messageRepository", () => {
+    let testDirectory: string;
+
+    beforeAll(async () => {
+        testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
+        await initializeDatabase(path.join(testDirectory, "messages.db"));
+    });
+
     beforeEach(async () => {
         await messageRepository.clear();
+    });
+
+    afterAll(async () => {
+        await closeDatabase();
+        await rm(testDirectory, { recursive: true, force: true });
     });
 
     it("stores messages by room and returns a copy", async () => {
