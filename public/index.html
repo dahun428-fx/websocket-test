@@ -3,10 +3,9 @@
 
 <head>
     <meta charset="UTF-8" />
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>WebSocket 채팅방 MVP</title>
+    <title>WebSocket 채팅</title>
 
     <style>
         * {
@@ -15,13 +14,14 @@
 
         body {
             max-width: 720px;
-            margin: 40px auto;
-            padding: 0 20px;
+            margin: 0 auto;
+            padding: 24px;
             font-family:
                 -apple-system,
                 BlinkMacSystemFont,
                 "Segoe UI",
                 sans-serif;
+            color: #222;
         }
 
         h1,
@@ -29,215 +29,312 @@
             margin-top: 0;
         }
 
-        section {
+        .section {
             margin-bottom: 24px;
             padding: 16px;
             border: 1px solid #ddd;
             border-radius: 8px;
         }
 
-        .row {
-            display: flex;
-            gap: 8px;
+        .field {
             margin-bottom: 12px;
         }
 
-        .row:last-child {
-            margin-bottom: 0;
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
         }
 
         input {
-            flex: 1;
-            min-width: 0;
+            width: 100%;
             padding: 10px 12px;
-            border: 1px solid #aaa;
+            border: 1px solid #ccc;
             border-radius: 6px;
             font-size: 14px;
         }
 
         button {
-            padding: 10px 16px;
-            border: 1px solid #888;
+            padding: 10px 14px;
+            border: 1px solid #bbb;
             border-radius: 6px;
             background: white;
             cursor: pointer;
         }
 
-        button:disabled,
-        input:disabled {
+        button:disabled {
             cursor: not-allowed;
             opacity: 0.5;
         }
 
-        #status {
-            margin-bottom: 24px;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-weight: 700;
+        .button-group {
+            display: flex;
+            gap: 8px;
         }
 
-        #roomInfo {
+        .status {
+            margin-top: 12px;
+            font-weight: 600;
+        }
+
+        .room-info {
             display: none;
-            margin-bottom: 16px;
+            margin-top: 12px;
             padding: 12px;
-            border: 1px solid #ddd;
             border-radius: 6px;
+            background: #f5f5f5;
+        }
+
+        .history-actions {
+            margin-bottom: 12px;
         }
 
         #messages {
-            min-height: 260px;
-            max-height: 420px;
-            overflow-y: auto;
+            height: 360px;
             margin: 0;
-            padding: 16px;
-            border: 1px solid #ccc;
+            padding: 12px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
             border-radius: 8px;
             list-style: none;
         }
 
         #messages li {
-            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: #f7f7f7;
             word-break: break-word;
         }
 
-        #messages li:last-child {
-            margin-bottom: 0;
+        #messages li.system {
+            background: #eef3ff;
         }
 
-        .system {
-            color: #666;
+        #messages li.error {
+            background: #fff0f0;
         }
 
-        .error {
-            color: #c00;
+        #messages .message-text {
+            flex: 1;
         }
 
-        .time {
-            margin-left: 8px;
-            color: #888;
+        #messages .time {
+            flex-shrink: 0;
+            color: #777;
             font-size: 12px;
+        }
+
+        .message-form {
+            display: flex;
+            gap: 8px;
+        }
+
+        .message-form input {
+            flex: 1;
         }
     </style>
 </head>
 
 <body>
-    <h1>WebSocket 채팅방 MVP</h1>
+    <h1>WebSocket 채팅</h1>
 
-    <div id="status">연결되지 않음</div>
+    <section class="section">
+        <h2>1. 서버 연결</h2>
 
-    <div id="roomInfo">
-        <strong>현재 방:</strong>
-        <span id="currentRoom"></span>
-
-        <br />
-
-        <strong>닉네임:</strong>
-        <span id="currentNickname"></span>
-
-        <br />
-
-        <strong>현재 방 연결 수:</strong>
-        <span id="roomConnectionCount">0</span>
-    </div>
-
-    <section>
-        <h2>1. WebSocket 연결</h2>
-
-        <div class="row">
-            <button id="connectBtn">
+        <div class="button-group">
+            <button id="connectBtn" type="button">
                 WebSocket 연결
             </button>
 
-            <button id="disconnectBtn" disabled>
+            <button id="disconnectBtn" type="button" disabled>
                 연결 종료
             </button>
         </div>
+
+        <div id="connectionStatus" class="status">
+            연결되지 않음
+        </div>
     </section>
 
-    <section>
-        <h2>2. 닉네임 등록 및 방 입장</h2>
+    <section class="section">
+        <h2>2. 채팅방 입장</h2>
 
-        <div class="row">
-            <input id="nicknameInput" type="text" maxlength="20" placeholder="닉네임을 입력하세요" disabled />
+        <div class="field">
+            <label for="nicknameInput">
+                닉네임
+            </label>
+
+            <input id="nicknameInput" type="text" maxlength="20" placeholder="닉네임을 입력하세요" />
         </div>
 
-        <div class="row">
-            <input id="roomInput" type="text" maxlength="20" placeholder="방 ID를 입력하세요. 예: room-1" disabled />
+        <div class="field">
+            <label for="roomInput">
+                방 ID
+            </label>
 
-            <button id="registerBtn" disabled>
-                방 입장
+            <input id="roomInput" type="text" maxlength="20" placeholder="예: room-1" />
+        </div>
+
+        <button id="registerBtn" type="button" disabled>
+            채팅방 입장
+        </button>
+
+        <div id="roomInfo" class="room-info">
+            <div>
+                현재 방:
+                <strong id="currentRoom">-</strong>
+            </div>
+
+            <div>
+                닉네임:
+                <strong id="currentNickname">-</strong>
+            </div>
+
+            <div>
+                연결 수:
+                <strong id="roomConnectionCount">0</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>3. 채팅</h2>
+
+        <div class="history-actions">
+            <button id="loadPreviousBtn" type="button" disabled>
+                이전 메시지 불러오기
             </button>
         </div>
-    </section>
 
-    <section>
-        <h2>3. 메시지 전송</h2>
+        <ul id="messages"></ul>
 
-        <form id="chatForm" class="row">
+        <div class="message-form" style="margin-top: 12px;">
             <input id="messageInput" type="text" maxlength="1000" placeholder="메시지를 입력하세요" disabled />
 
-            <button id="sendBtn" type="submit" disabled>
+            <button id="sendBtn" type="button" disabled>
                 전송
             </button>
-        </form>
+        </div>
     </section>
-
-    <h2>받은 메시지</h2>
-
-    <ul id="messages"></ul>
 
     <script>
         let socket = null;
+
         let registeredNickname = null;
         let joinedRoomId = null;
 
-        const statusElement =
-            document.getElementById("status");
+        /**
+         * 현재 화면에 표시된 채팅 중
+         * 가장 작은 메시지 ID입니다.
+         */
+        let oldestMessageId = null;
+
+        /**
+         * 이전 메시지를 요청하고 있는지 나타냅니다.
+         * 빠르게 버튼을 여러 번 누르는 것을 막습니다.
+         */
+        let isHistoryLoading = false;
+
+        /**
+         * 현재 메시지보다 더 오래된 메시지가
+         * DB에 남아 있는지를 나타냅니다.
+         */
+        let hasMoreHistory = false;
+
+        const connectionStatus =
+            document.getElementById(
+                "connectionStatus",
+            );
+
+        const connectBtn =
+            document.getElementById(
+                "connectBtn",
+            );
+
+        const disconnectBtn =
+            document.getElementById(
+                "disconnectBtn",
+            );
+
+        const nicknameInput =
+            document.getElementById(
+                "nicknameInput",
+            );
+
+        const roomInput =
+            document.getElementById(
+                "roomInput",
+            );
+
+        const registerBtn =
+            document.getElementById(
+                "registerBtn",
+            );
 
         const roomInfo =
-            document.getElementById("roomInfo");
+            document.getElementById(
+                "roomInfo",
+            );
 
         const currentRoom =
-            document.getElementById("currentRoom");
+            document.getElementById(
+                "currentRoom",
+            );
 
         const currentNickname =
-            document.getElementById("currentNickname");
+            document.getElementById(
+                "currentNickname",
+            );
 
         const roomConnectionCount =
             document.getElementById(
                 "roomConnectionCount",
             );
 
-        const nicknameInput =
-            document.getElementById("nicknameInput");
-
-        const roomInput =
-            document.getElementById("roomInput");
-
-        const messageInput =
-            document.getElementById("messageInput");
-
-        const connectBtn =
-            document.getElementById("connectBtn");
-
-        const disconnectBtn =
-            document.getElementById("disconnectBtn");
-
-        const registerBtn =
-            document.getElementById("registerBtn");
-
-        const sendBtn =
-            document.getElementById("sendBtn");
-
-        const chatForm =
-            document.getElementById("chatForm");
+        const loadPreviousBtn =
+            document.getElementById(
+                "loadPreviousBtn",
+            );
 
         const messages =
-            document.getElementById("messages");
+            document.getElementById(
+                "messages",
+            );
 
-        function setStatus(text) {
-            statusElement.textContent = text;
+        const messageInput =
+            document.getElementById(
+                "messageInput",
+            );
+
+        const sendBtn =
+            document.getElementById(
+                "sendBtn",
+            );
+
+        /**
+         * WebSocket 서버 주소입니다.
+         *
+         * 현재 페이지를 연 서버와 동일한
+         * host와 port를 사용합니다.
+         */
+        function createWebSocketUrl() {
+            const protocol =
+                window.location.protocol === "https:"
+                    ? "wss:"
+                    : "ws:";
+
+            return (
+                `${protocol}//${window.location.host}`
+            );
+        }
+
+        function setConnectionStatus(text) {
+            connectionStatus.textContent =
+                text;
         }
 
         function formatTime(createdAt) {
@@ -245,43 +342,87 @@
                 return "";
             }
 
-            const date = new Date(createdAt);
+            const date =
+                new Date(createdAt);
 
-            return date.toLocaleTimeString("ko-KR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-            });
+            if (
+                Number.isNaN(date.getTime())
+            ) {
+                return createdAt;
+            }
+
+            return date.toLocaleTimeString(
+                "ko-KR",
+                {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                },
+            );
         }
 
-        function addMessage(
+        function createMessageElement(
             text,
             className = "",
             createdAt = null,
         ) {
-            const li = document.createElement("li");
+            const li =
+                document.createElement("li");
 
             if (className) {
                 li.className = className;
             }
 
             const textElement =
-                document.createElement("span");
+                document.createElement(
+                    "span",
+                );
 
-            textElement.textContent = text;
+            textElement.className =
+                "message-text";
 
-            li.appendChild(textElement);
+            textElement.textContent =
+                text;
+
+            li.appendChild(
+                textElement,
+            );
 
             if (createdAt) {
                 const timeElement =
-                    document.createElement("span");
+                    document.createElement(
+                        "span",
+                    );
 
-                timeElement.className = "time";
+                timeElement.className =
+                    "time";
+
                 timeElement.textContent =
                     formatTime(createdAt);
 
-                li.appendChild(timeElement);
+                li.appendChild(
+                    timeElement,
+                );
             }
+
+            return li;
+        }
+
+        /**
+         * 새로운 채팅이나 시스템 메시지를
+         * 목록 아래쪽에 추가합니다.
+         */
+        function addMessage(
+            text,
+            className = "",
+            createdAt = null,
+        ) {
+            const li =
+                createMessageElement(
+                    text,
+                    className,
+                    createdAt,
+                );
 
             messages.appendChild(li);
 
@@ -289,8 +430,108 @@
                 messages.scrollHeight;
         }
 
-        function updateRoomConnectionCount(count) {
-            if (typeof count !== "number") {
+        /**
+         * 과거 메시지를 기존 목록의 위쪽에 추가합니다.
+         *
+         * 메시지를 추가하기 전후의 scrollHeight 차이를 이용해
+         * 사용자가 보고 있던 위치를 유지합니다.
+         */
+        function prependChatMessages(
+            chatMessages,
+        ) {
+            if (
+                !Array.isArray(
+                    chatMessages,
+                ) ||
+                chatMessages.length === 0
+            ) {
+                return;
+            }
+
+            const previousScrollHeight =
+                messages.scrollHeight;
+
+            const fragment =
+                document.createDocumentFragment();
+
+            chatMessages.forEach(
+                (chatMessage) => {
+                    const li =
+                        createMessageElement(
+                            `${chatMessage.nickname}: ${chatMessage.message}`,
+                            "",
+                            chatMessage.createdAt,
+                        );
+
+                    fragment.appendChild(li);
+                },
+            );
+
+            messages.insertBefore(
+                fragment,
+                messages.firstChild,
+            );
+
+            const newScrollHeight =
+                messages.scrollHeight;
+
+            messages.scrollTop =
+                newScrollHeight -
+                previousScrollHeight;
+        }
+
+        /**
+         * 받은 채팅 목록에서 가장 작은 메시지 ID를 찾아
+         * oldestMessageId를 갱신합니다.
+         */
+        function updateOldestMessageId(
+            chatMessages,
+        ) {
+            if (
+                !Array.isArray(
+                    chatMessages,
+                ) ||
+                chatMessages.length === 0
+            ) {
+                return;
+            }
+
+            const validIds =
+                chatMessages
+                    .map(
+                        (chatMessage) =>
+                            chatMessage.id,
+                    )
+                    .filter(
+                        (id) =>
+                            Number.isInteger(id),
+                    );
+
+            if (
+                validIds.length === 0
+            ) {
+                return;
+            }
+
+            const minimumId =
+                Math.min(...validIds);
+
+            if (
+                oldestMessageId === null ||
+                minimumId <
+                oldestMessageId
+            ) {
+                oldestMessageId =
+                    minimumId;
+            }
+        }
+
+        function updateRoomConnectionCount(
+            count,
+        ) {
+            if (
+                typeof count !== "number"
+            ) {
                 return;
             }
 
@@ -298,10 +539,13 @@
                 String(count);
         }
 
+        /**
+         * 서버로 JSON 메시지를 전송합니다.
+         */
         function sendJson(payload) {
             if (!socket) {
                 addMessage(
-                    "WebSocket 객체가 없습니다.",
+                    "WebSocket 연결이 없습니다.",
                     "error",
                 );
 
@@ -309,275 +553,545 @@
             }
 
             if (
-                socket.readyState !== WebSocket.OPEN
+                socket.readyState !==
+                WebSocket.OPEN
             ) {
                 addMessage(
-                    "WebSocket이 연결된 상태가 아닙니다.",
+                    "WebSocket이 열린 상태가 아닙니다.",
                     "error",
                 );
 
                 return false;
             }
 
-            const json = JSON.stringify(payload);
-
-            console.log("서버로 보내는 객체:", payload);
-            console.log(
-                "실제로 전송되는 JSON 문자열:",
-                json,
+            socket.send(
+                JSON.stringify(payload),
             );
-
-            socket.send(json);
 
             return true;
         }
 
+        /**
+         * UI와 클라이언트 상태를 초기화합니다.
+         */
         function resetUi() {
             registeredNickname = null;
             joinedRoomId = null;
 
+            oldestMessageId = null;
+            isHistoryLoading = false;
+            hasMoreHistory = false;
+
             connectBtn.disabled = false;
             disconnectBtn.disabled = true;
 
-            nicknameInput.disabled = true;
-            roomInput.disabled = true;
             registerBtn.disabled = true;
+
+            nicknameInput.disabled = false;
+            roomInput.disabled = false;
 
             messageInput.disabled = true;
             sendBtn.disabled = true;
 
-            roomInfo.style.display = "none";
+            loadPreviousBtn.disabled =
+                true;
 
-            currentRoom.textContent = "";
-            currentNickname.textContent = "";
-            roomConnectionCount.textContent = "0";
+            roomInfo.style.display =
+                "none";
 
-            setStatus("연결되지 않음");
+            currentRoom.textContent =
+                "-";
+
+            currentNickname.textContent =
+                "-";
+
+            roomConnectionCount.textContent =
+                "0";
+
+            setConnectionStatus(
+                "연결되지 않음",
+            );
+        }
+
+        /**
+         * WebSocket 연결을 시작합니다.
+         */
+        function connectWebSocket() {
+            if (
+                socket &&
+                (
+                    socket.readyState ===
+                    WebSocket.OPEN ||
+                    socket.readyState ===
+                    WebSocket.CONNECTING
+                )
+            ) {
+                addMessage(
+                    "이미 연결 중이거나 연결된 상태입니다.",
+                    "system",
+                );
+
+                return;
+            }
+
+            const url =
+                createWebSocketUrl();
+
+            console.log(
+                "WebSocket 연결 주소:",
+                url,
+            );
+
+            socket =
+                new WebSocket(url);
+
+            connectBtn.disabled = true;
+
+            setConnectionStatus(
+                "연결 중...",
+            );
+
+            socket.addEventListener(
+                "open",
+                () => {
+                    console.log(
+                        "WebSocket 연결 성공",
+                    );
+
+                    setConnectionStatus(
+                        "연결됨",
+                    );
+
+                    disconnectBtn.disabled =
+                        false;
+
+                    registerBtn.disabled =
+                        false;
+                },
+            );
+
+            socket.addEventListener(
+                "message",
+                (event) => {
+                    handleServerMessage(
+                        event.data,
+                    );
+                },
+            );
+
+            socket.addEventListener(
+                "close",
+                (event) => {
+                    console.log(
+                        "WebSocket 연결 종료:",
+                        event.code,
+                        event.reason,
+                    );
+
+                    addMessage(
+                        "WebSocket 연결이 종료되었습니다.",
+                        "system",
+                    );
+
+                    socket = null;
+
+                    resetUi();
+                },
+            );
+
+            socket.addEventListener(
+                "error",
+                (error) => {
+                    console.error(
+                        "WebSocket 오류:",
+                        error,
+                    );
+
+                    addMessage(
+                        "WebSocket 오류가 발생했습니다.",
+                        "error",
+                    );
+                },
+            );
+        }
+
+        /**
+         * 닉네임 등록 및 방 입장 요청을 전송합니다.
+         */
+        function registerUser() {
+            const nickname =
+                nicknameInput.value.trim();
+
+            const roomId =
+                roomInput.value.trim();
+
+            if (!nickname) {
+                addMessage(
+                    "닉네임을 입력하세요.",
+                    "error",
+                );
+
+                nicknameInput.focus();
+                return;
+            }
+
+            if (!roomId) {
+                addMessage(
+                    "방 ID를 입력하세요.",
+                    "error",
+                );
+
+                roomInput.focus();
+                return;
+            }
+
+            sendJson({
+                type: "register",
+                nickname,
+                room_id: roomId,
+            });
+        }
+
+        /**
+         * 채팅 메시지를 전송합니다.
+         */
+        function sendChatMessage() {
+            if (!joinedRoomId) {
+                addMessage(
+                    "먼저 채팅방에 입장하세요.",
+                    "error",
+                );
+
+                return;
+            }
+
+            const message =
+                messageInput.value.trim();
+
+            if (!message) {
+                addMessage(
+                    "메시지를 입력하세요.",
+                    "error",
+                );
+
+                return;
+            }
+
+            const isSent =
+                sendJson({
+                    type: "chat",
+                    message,
+                });
+
+            if (isSent) {
+                messageInput.value = "";
+                messageInput.focus();
+            }
+        }
+
+        /**
+         * 현재 화면에서 가장 오래된 메시지보다
+         * 더 이전의 메시지를 요청합니다.
+         */
+        function requestPreviousHistory() {
+            if (!joinedRoomId) {
+                addMessage(
+                    "먼저 채팅방에 입장하세요.",
+                    "error",
+                );
+
+                return;
+            }
+
+            if (
+                oldestMessageId === null
+            ) {
+                addMessage(
+                    "기준이 되는 메시지가 없습니다.",
+                    "system",
+                );
+
+                return;
+            }
+
+            if (isHistoryLoading) {
+                return;
+            }
+
+            if (!hasMoreHistory) {
+                addMessage(
+                    "더 이상 이전 메시지가 없습니다.",
+                    "system",
+                );
+
+                return;
+            }
+
+            isHistoryLoading = true;
+
+            loadPreviousBtn.disabled =
+                true;
+
+            const isSent =
+                sendJson({
+                    type:
+                        "history-request",
+                    before_id:
+                        oldestMessageId,
+                    limit: 30,
+                });
+
+            if (!isSent) {
+                isHistoryLoading = false;
+
+                loadPreviousBtn.disabled =
+                    !hasMoreHistory;
+            }
+        }
+
+        /**
+         * 서버에서 받은 JSON 메시지를 처리합니다.
+         */
+        function handleServerMessage(
+            rawData,
+        ) {
+            console.log(
+                "서버에서 받은 원본 데이터:",
+                rawData,
+            );
+
+            let data;
+
+            try {
+                data =
+                    JSON.parse(rawData);
+            } catch (error) {
+                console.error(
+                    "서버 응답 JSON 변환 실패:",
+                    error,
+                );
+
+                addMessage(
+                    "서버 응답을 해석할 수 없습니다.",
+                    "error",
+                );
+
+                return;
+            }
+
+            console.log(
+                "서버 응답 객체:",
+                data,
+            );
+
+            if (
+                data.type ===
+                "connection"
+            ) {
+                addMessage(
+                    data.message,
+                    "system",
+                    data.createdAt,
+                );
+
+                return;
+            }
+
+            if (
+                data.type ===
+                "register-success"
+            ) {
+                registeredNickname =
+                    data.nickname;
+
+                joinedRoomId =
+                    data.room_id;
+
+                oldestMessageId = null;
+                isHistoryLoading = false;
+                hasMoreHistory = false;
+
+                nicknameInput.disabled =
+                    true;
+
+                roomInput.disabled =
+                    true;
+
+                registerBtn.disabled =
+                    true;
+
+                messageInput.disabled =
+                    false;
+
+                sendBtn.disabled =
+                    false;
+
+                loadPreviousBtn.disabled =
+                    true;
+
+                currentRoom.textContent =
+                    joinedRoomId;
+
+                currentNickname.textContent =
+                    registeredNickname;
+
+                updateRoomConnectionCount(
+                    data.roomConnectionCount,
+                );
+
+                roomInfo.style.display =
+                    "block";
+
+                addMessage(
+                    data.message,
+                    "system",
+                    data.createdAt,
+                );
+
+                messageInput.focus();
+
+                return;
+            }
+
+            /**
+             * 최초 입장 History와
+             * 추가 조회 History를 모두 처리합니다.
+             */
+            if (
+                data.type === "history"
+            ) {
+                const chatMessages =
+                    Array.isArray(
+                        data.messages,
+                    )
+                        ? data.messages
+                        : [];
+
+                updateOldestMessageId(
+                    chatMessages,
+                );
+
+                hasMoreHistory =
+                    data.hasMore === true;
+
+                if (
+                    isHistoryLoading
+                ) {
+                    prependChatMessages(
+                        chatMessages,
+                    );
+                } else {
+                    chatMessages.forEach(
+                        (
+                            chatMessage,
+                        ) => {
+                            addMessage(
+                                `${chatMessage.nickname}: ${chatMessage.message}`,
+                                "",
+                                chatMessage.createdAt,
+                            );
+                        },
+                    );
+                }
+
+                isHistoryLoading = false;
+
+                loadPreviousBtn.disabled =
+                    !hasMoreHistory;
+
+                if (
+                    chatMessages.length ===
+                    0 &&
+                    !hasMoreHistory
+                ) {
+                    console.log(
+                        "더 이상 이전 메시지가 없습니다.",
+                    );
+                }
+
+                return;
+            }
+
+            if (
+                data.type === "chat"
+            ) {
+                addMessage(
+                    `${data.nickname}: ${data.message}`,
+                    "",
+                    data.createdAt,
+                );
+
+                if (
+                    oldestMessageId ===
+                    null &&
+                    Number.isInteger(
+                        data.id,
+                    )
+                ) {
+                    oldestMessageId =
+                        data.id;
+                }
+
+                return;
+            }
+
+            if (
+                data.type ===
+                "notification"
+            ) {
+                updateRoomConnectionCount(
+                    data.roomConnectionCount,
+                );
+
+                addMessage(
+                    data.message,
+                    "system",
+                    data.createdAt,
+                );
+
+                return;
+            }
+
+            if (
+                data.type === "error"
+            ) {
+                const errorText =
+                    data.code
+                        ? `[${data.code}] ${data.message}`
+                        : data.message;
+
+                addMessage(
+                    errorText,
+                    "error",
+                    data.createdAt,
+                );
+
+                /**
+                 * History 요청에 실패한 경우
+                 * 버튼을 다시 사용할 수 있게 합니다.
+                 */
+                if (
+                    isHistoryLoading
+                ) {
+                    isHistoryLoading =
+                        false;
+
+                    loadPreviousBtn.disabled =
+                        !hasMoreHistory;
+                }
+
+                return;
+            }
+
+            console.warn(
+                "알 수 없는 메시지 타입:",
+                data,
+            );
         }
 
         connectBtn.addEventListener(
             "click",
-            () => {
-                if (
-                    socket &&
-                    (
-                        socket.readyState ===
-                        WebSocket.CONNECTING ||
-                        socket.readyState ===
-                        WebSocket.OPEN
-                    )
-                ) {
-                    addMessage(
-                        "이미 연결 중이거나 연결된 상태입니다.",
-                        "error",
-                    );
-
-                    return;
-                }
-
-                setStatus("연결 중...");
-                connectBtn.disabled = true;
-
-                const protocol =
-                    window.location.protocol === "https:"
-                        ? "wss:"
-                        : "ws:";
-
-                socket = new WebSocket(
-                    `${protocol}//${window.location.host}`,
-                );
-
-                socket.addEventListener(
-                    "open",
-                    () => {
-                        console.log(
-                            "WebSocket 연결 성공",
-                        );
-
-                        setStatus("서버 연결 완료");
-
-                        connectBtn.disabled = true;
-                        disconnectBtn.disabled = false;
-
-                        nicknameInput.disabled = false;
-                        roomInput.disabled = false;
-                        registerBtn.disabled = false;
-
-                        nicknameInput.focus();
-                    },
-                );
-
-                socket.addEventListener(
-                    "message",
-                    (event) => {
-                        console.log(
-                            "서버에서 받은 원본 데이터:",
-                            event.data,
-                        );
-
-                        let data;
-
-                        try {
-                            data = JSON.parse(event.data);
-                        } catch (error) {
-                            console.error(
-                                "서버 응답 JSON 변환 실패:",
-                                error,
-                            );
-
-                            addMessage(
-                                "서버 응답을 해석할 수 없습니다.",
-                                "error",
-                            );
-
-                            return;
-                        }
-
-                        console.log(
-                            "객체로 변환된 데이터:",
-                            data,
-                        );
-
-                        if (data.type === "connection") {
-                            addMessage(
-                                data.message,
-                                "system",
-                                data.createdAt,
-                            );
-
-                            return;
-                        }
-
-                        if (
-                            data.type ===
-                            "register-success"
-                        ) {
-                            registeredNickname =
-                                data.nickname;
-
-                            joinedRoomId =
-                                data.room_id;
-
-                            setStatus(
-                                `${joinedRoomId}방에 접속 중`,
-                            );
-
-                            currentRoom.textContent =
-                                joinedRoomId;
-
-                            currentNickname.textContent =
-                                registeredNickname;
-
-                            updateRoomConnectionCount(
-                                data.roomConnectionCount,
-                            );
-
-                            roomInfo.style.display =
-                                "block";
-
-                            nicknameInput.disabled = true;
-                            roomInput.disabled = true;
-                            registerBtn.disabled = true;
-
-                            messageInput.disabled = false;
-                            sendBtn.disabled = false;
-
-                            addMessage(
-                                data.message,
-                                "system",
-                                data.createdAt,
-                            );
-
-                            messageInput.focus();
-
-                            return;
-                        }
-                        /**
-                         * 방의 기존 채팅 내역
-                        */
-                        if (data.type === "history") {
-                            console.log(
-                                "기존 채팅 내역:",
-                                data.messages,
-                            );
-                            data.messages.forEach((chatMessage) => {
-                                addMessage(
-                                    `${chatMessage.nickname}: ${chatMessage.message}`,
-                                    "",
-                                    chatMessage.createdAt,
-                                );
-                            });
-                            return;
-                        }
-                        if (data.type === "chat") {
-                            addMessage(
-                                `${data.nickname}: ${data.message}`,
-                                "",
-                                data.createdAt,
-                            );
-
-                            return;
-                        }
-
-                        if (
-                            data.type === "notification"
-                        ) {
-                            updateRoomConnectionCount(
-                                data.roomConnectionCount,
-                            );
-
-                            addMessage(
-                                data.message,
-                                "system",
-                                data.createdAt,
-                            );
-
-                            return;
-                        }
-
-                        if (data.type === "error") {
-                            addMessage(
-                                data.message,
-                                "error",
-                                data.createdAt,
-                            );
-                        }
-                    },
-                );
-
-                socket.addEventListener(
-                    "close",
-                    () => {
-                        console.log(
-                            "WebSocket 연결 종료",
-                        );
-
-                        addMessage(
-                            "서버와의 연결이 종료되었습니다.",
-                            "system",
-                        );
-
-                        socket = null;
-
-                        resetUi();
-                    },
-                );
-
-                socket.addEventListener(
-                    "error",
-                    (error) => {
-                        console.error(
-                            "WebSocket 에러:",
-                            error,
-                        );
-
-                        addMessage(
-                            "WebSocket 연결 중 오류가 발생했습니다.",
-                            "error",
-                        );
-                    },
-                );
-            },
+            connectWebSocket,
         );
 
         disconnectBtn.addEventListener(
@@ -587,60 +1101,48 @@
                     return;
                 }
 
-                if (
-                    socket.readyState ===
-                    WebSocket.OPEN ||
-                    socket.readyState ===
-                    WebSocket.CONNECTING
-                ) {
-                    socket.close();
-                }
+                socket.close(
+                    1000,
+                    "Client disconnect",
+                );
             },
         );
 
         registerBtn.addEventListener(
             "click",
-            () => {
-                const nickname =
-                    nicknameInput.value.trim();
+            registerUser,
+        );
 
-                const roomId =
-                    roomInput.value.trim();
+        sendBtn.addEventListener(
+            "click",
+            sendChatMessage,
+        );
 
-                if (!nickname) {
-                    addMessage(
-                        "닉네임을 입력하세요.",
-                        "error",
-                    );
+        loadPreviousBtn.addEventListener(
+            "click",
+            requestPreviousHistory,
+        );
 
-                    nicknameInput.focus();
+        messageInput.addEventListener(
+            "keydown",
+            (event) => {
+                if (
+                    event.key === "Enter" &&
+                    !event.isComposing
+                ) {
+                    event.preventDefault();
 
-                    return;
+                    sendChatMessage();
                 }
-
-                if (!roomId) {
-                    addMessage(
-                        "방 ID를 입력하세요.",
-                        "error",
-                    );
-
-                    roomInput.focus();
-
-                    return;
-                }
-
-                sendJson({
-                    type: "register",
-                    nickname,
-                    room_id: roomId,
-                });
             },
         );
 
         nicknameInput.addEventListener(
             "keydown",
             (event) => {
-                if (event.key === "Enter") {
+                if (
+                    event.key === "Enter"
+                ) {
                     roomInput.focus();
                 }
             },
@@ -649,44 +1151,10 @@
         roomInput.addEventListener(
             "keydown",
             (event) => {
-                if (event.key === "Enter") {
-                    registerBtn.click();
-                }
-            },
-        );
-
-        chatForm.addEventListener(
-            "submit",
-            (event) => {
-                event.preventDefault();
-
                 if (
-                    !registeredNickname ||
-                    !joinedRoomId
+                    event.key === "Enter"
                 ) {
-                    addMessage(
-                        "먼저 닉네임을 등록하고 방에 입장하세요.",
-                        "error",
-                    );
-
-                    return;
-                }
-
-                const message =
-                    messageInput.value.trim();
-
-                if (!message) {
-                    return;
-                }
-
-                const sent = sendJson({
-                    type: "chat",
-                    message,
-                });
-
-                if (sent) {
-                    messageInput.value = "";
-                    messageInput.focus();
+                    registerUser();
                 }
             },
         );
