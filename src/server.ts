@@ -16,11 +16,17 @@ import { enqueueMessage } from "./queue/messageQueue";
 import { ERROR_MESSAGES } from "./errors/errorMessages";
 import type { ErrorCode } from "./errors/errorMessages";
 import { closeDatabase, initializeDatabase } from "./database/database";
-import { startHeartbeat } from "./heartbeat/heartbeat";
+import {
+    logHeartbeat,
+    resolveHeartbeatIntervalMs,
+    startHeartbeat,
+} from "./heartbeat/heartbeat";
 
 const PORT = Number(process.env.PORT) || 3010;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
-const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = resolveHeartbeatIntervalMs(
+    process.env.HEARTBEAT_INTERVAL_MS,
+);
 
 let isShuttingDown = false;
 let heartbeatTimer: NodeJS.Timeout | null = null;
@@ -169,6 +175,7 @@ wss.on("connection", (connection) => {
 
     ws.on("pong", () => {
         ws.isAlive = true;
+        logHeartbeat("pong", ws);
     });
 
     ws.on("close", () => handleClose(ws));

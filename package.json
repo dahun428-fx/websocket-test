@@ -5,6 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
+    "check:heartbeat": "npm run build && node scripts/check-heartbeat.js",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "test": "vitest run",
