@@ -16,10 +16,14 @@ import { enqueueMessage } from "./queue/messageQueue";
 import { ERROR_MESSAGES } from "./errors/errorMessages";
 import type { ErrorCode } from "./errors/errorMessages";
 import { closeDatabase, initializeDatabase } from "./database/database";
+import { startHeartbeat } from "./heartbeat/heartbeat";
 
 const PORT = Number(process.env.PORT) || 3010;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 let isShuttingDown = false;
+let heartbeatTimer: NodeJS.Timeout | null = null;
 
 const server = http.createServer(
     (_req: IncomingMessage, res: ServerResponse) => {
@@ -41,7 +45,6 @@ const server = http.createServer(
 
 const wss = new WebSocketServer({ server });
 const roomService = createRoomService(wss);
-
 function sendJson(ws: ChatWebSocket, payload: ServerMessage): Promise<void> {
     return new Promise((resolve, reject) => {
         if (ws.readyState !== WebSocket.OPEN) {
@@ -147,6 +150,7 @@ wss.on("connection", (connection) => {
     ws.room_id = null;
     ws.messageQueue = Promise.resolve();
     ws.isClosed = false;
+    ws.isAlive = true;
     console.log("새로운 클라이언트 연결");
     console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
     void sendJson(ws, {
@@ -162,6 +166,11 @@ wss.on("connection", (connection) => {
             await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
         });
     });
+
+    ws.on("pong", () => {
+        ws.isAlive = true;
+    });
+
     ws.on("close", () => handleClose(ws));
     ws.on("error", (error) => console.error("WebSocket 연결 에러:", error));
 });
@@ -174,6 +183,7 @@ async function startServer(): Promise<void> {
             server.once("error", reject);
             server.listen(PORT, () => {
                 server.off("error", reject);
+                heartbeatTimer = startHeartbeat(wss, HEARTBEAT_INTERVAL_MS);
                 console.log(`서버 실행: http://localhost:${PORT}`);
                 resolve();
             });
@@ -191,6 +201,11 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     }
 
     isShuttingDown = true;
+
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
     console.log(`\n${signal} 신호 수신, 서버 종료 중...`);
 
     wss.clients.forEach((client) => {

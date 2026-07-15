@@ -5,4 +5,5 @@ export interface ChatWebSocket extends WebSocket {
     room_id: string | null;
     messageQueue: Promise<void>;
     isClosed: boolean;
+    isAlive: boolean;
 }
