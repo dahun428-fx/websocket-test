@@ -133,19 +133,24 @@ function handleClose(ws: ChatWebSocket): void {
 
     const nickname = ws.nickname;
     const roomId = ws.room_id;
+
     roomService.leave(ws);
+
     console.log("클라이언트 연결 종료");
     console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
 
     if (!nickname || !roomId) return;
 
     const roomConnectionCount = roomService.getConnectionCount(roomId);
+    const roomUserCount = roomService.getUserCount(roomId);
+
     console.log(`${roomId}방 연결 수:`, roomConnectionCount);
     roomService.broadcastToRoom(roomId, {
         type: "notification",
         room_id: roomId,
         message: `${nickname}님이 퇴장했습니다.`,
         roomConnectionCount,
+        roomUserCount,
         createdAt: createTimestamp(),
     });
 }

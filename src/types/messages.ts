@@ -18,6 +18,7 @@ export interface RegisterSuccessMessage {
     nickname: string;
     room_id: string;
     roomConnectionCount: number;
+    roomUserCount: number;
     message: string;
     createdAt: string;
 }
@@ -52,6 +53,7 @@ export interface NotificationMessage {
     type: "notification";
     room_id: string;
     roomConnectionCount: number;
+    roomUserCount: number;
     message: string;
     createdAt: string;
 }

@@ -4,8 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import createRoomService from "./roomService";
 import type { ChatWebSocket } from "../types/websocket";
 
-function createClient(roomId: string | null, isOpen = true): ChatWebSocket {
+function createClient(
+    roomId: string | null,
+    isOpen = true,
+    userId: string | null = null,
+): ChatWebSocket {
     return {
+        userId,
         nickname: null,
         room_id: roomId,
         readyState: isOpen ? WebSocket.OPEN : WebSocket.CLOSED,
@@ -28,6 +33,27 @@ describe("roomService", () => {
         expect(first.room_id).toBeNull();
     });
 
+    it("counts distinct users from open connections in the selected room", () => {
+        const firstConnection = createClient("room-1", true, "user-1");
+        const sameUserConnection = createClient("room-1", true, "user-1");
+        const secondUser = createClient("room-1", true, "user-2");
+        const closedUser = createClient("room-1", false, "user-3");
+        const otherRoomUser = createClient("room-2", true, "user-4");
+        const wss = {
+            clients: new Set([
+                firstConnection,
+                sameUserConnection,
+                secondUser,
+                closedUser,
+                otherRoomUser,
+            ]),
+        } as unknown as WebSocketServer;
+        const service = createRoomService(wss);
+
+        expect(service.getUserCount("room-1")).toBe(2);
+        expect(service.getUserCount("unknown-room")).toBe(0);
+    });
+
     it("broadcasts only to open clients in the selected room", () => {
         const target = createClient("room-1");
         const closed = createClient("room-1", false);
@@ -39,6 +65,7 @@ describe("roomService", () => {
             type: "notification",
             room_id: "room-1",
             roomConnectionCount: 1,
+            roomUserCount: 1,
             message: "joined",
             createdAt: "2026-01-01T00:00:00.000Z",
         });

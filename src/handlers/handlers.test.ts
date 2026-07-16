@@ -11,6 +11,7 @@ function createContext(): MessageHandlerContext {
         roomService: {
             broadcastToRoom: vi.fn(() => 1),
             getConnectionCount: vi.fn(() => 1),
+            getUserCount: vi.fn(() => 1),
             getClients: vi.fn(() => []),
             join: vi.fn((ws, roomId) => {
                 ws.room_id = roomId;
@@ -82,7 +83,7 @@ describe("message handlers", () => {
         }, context)).resolves.toBe(true);
         expect(socket).toMatchObject({ userId: "user-1", nickname: "neo", room_id: "room-1" });
         expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
-            type: "register-success", userId: "user-1",
+            type: "register-success", userId: "user-1", roomUserCount: 1,
         }));
         expect(context.sendRoomHistory).toHaveBeenCalledWith(socket, "room-1");
     });

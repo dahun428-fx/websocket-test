@@ -8,7 +8,7 @@ describe("dispatchMessage", () => {
     it("routes a chat message to the chat handler", async () => {
         const context: MessageHandlerContext = {
             roomService: {
-                broadcastToRoom: vi.fn(), getConnectionCount: vi.fn(), getClients: vi.fn(),
+                broadcastToRoom: vi.fn(), getConnectionCount: vi.fn(), getUserCount: vi.fn(), getClients: vi.fn(),
                 join: vi.fn(), leave: vi.fn(),
             },
             messageRepository: {

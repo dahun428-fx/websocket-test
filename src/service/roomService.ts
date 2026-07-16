@@ -4,6 +4,7 @@ import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
 
 export interface RoomService {
+    getUserCount(roomId: string): number;
     broadcastToRoom(roomId: string, payload: ServerMessage): number;
     getConnectionCount(roomId: string): number;
     getClients(roomId: string): ChatWebSocket[];
@@ -16,6 +17,22 @@ function createRoomService(wss: WebSocketServer): RoomService {
         throw new Error(
             "createRoomService에는 WebSocket.Server 인스턴스가 필요합니다.",
         );
+    }
+
+    function getUserCount(roomId: string): number {
+        const userIds = new Set<string>();
+
+        wss.clients.forEach((client) => {
+            const ws = client as ChatWebSocket;
+            const isOpen = ws.readyState === WebSocket.OPEN;
+            const isSameRoom = ws.room_id === roomId;
+
+            if (isOpen && isSameRoom && ws.userId) {
+                userIds.add(ws.userId);
+            }
+        });
+
+        return userIds.size;
     }
 
     /**
@@ -133,6 +150,7 @@ function createRoomService(wss: WebSocketServer): RoomService {
 
     return {
         broadcastToRoom,
+        getUserCount,
         getConnectionCount,
         getClients,
         join,

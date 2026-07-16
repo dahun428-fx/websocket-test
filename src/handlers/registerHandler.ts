@@ -49,12 +49,16 @@ export const registerHandler: RegisterHandler = {
         console.log(`등록 완료: nickname=${ws.nickname}, room_id=${joinedRoomId}`);
         console.log(`${joinedRoomId}방 연결 수:`, roomConnectionCount);
 
+        const roomUserCount = roomService.getUserCount(joinedRoomId);
+
+
         await sendJson(ws, {
             type: "register-success",
             userId,
             nickname,
             room_id: joinedRoomId,
             roomConnectionCount,
+            roomUserCount,
             message: `${joinedRoomId}방에 ${nickname} 닉네임으로 입장했습니다.`,
             createdAt: createTimestamp(),
         });
@@ -69,6 +73,7 @@ export const registerHandler: RegisterHandler = {
             room_id: joinedRoomId,
             message: `${nickname}님이 입장했습니다.`,
             roomConnectionCount,
+            roomUserCount,
             createdAt: createTimestamp(),
         });
         return true;

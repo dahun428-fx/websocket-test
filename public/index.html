@@ -216,6 +216,10 @@
                 연결 수:
                 <strong id="roomConnectionCount">0</strong>
             </div>
+            <div>
+                실제 사용자 수:
+                <strong id="roomUserCount">0</strong>
+            </div>
         </div>
     </section>
 
@@ -309,7 +313,10 @@
             document.getElementById(
                 "roomConnectionCount",
             );
-
+        const roomUserCount =
+            document.getElementById(
+                "roomUserCount",
+            );
         const loadPreviousBtn =
             document.getElementById(
                 "loadPreviousBtn",
@@ -521,19 +528,26 @@
             }
         }
 
-        function updateRoomConnectionCount(
-            count,
+        function updateRoomCounts(
+            connectionCount,
+            userCount,
         ) {
             if (
-                typeof count !== "number"
+                typeof connectionCount ===
+                "number"
             ) {
-                return;
+                roomConnectionCount.textContent =
+                    String(connectionCount);
             }
 
-            roomConnectionCount.textContent =
-                String(count);
+            if (
+                typeof userCount ===
+                "number"
+            ) {
+                roomUserCount.textContent =
+                    String(userCount);
+            }
         }
-
         function sendJson(payload) {
             if (!socket) {
                 addMessage(
@@ -601,7 +615,7 @@
 
             roomConnectionCount.textContent =
                 "0";
-
+            roomUserCount.textContent = "0";
             setConnectionStatus(
                 "연결되지 않음",
             );
@@ -939,7 +953,10 @@
                 updateRoomConnectionCount(
                     data.roomConnectionCount,
                 );
-
+                updateRoomCounts(
+                    data.roomConnectionCount,
+                    data.roomUserCount,
+                );
                 roomInfo.style.display =
                     "block";
 
@@ -1026,8 +1043,9 @@
                 data.type ===
                 "notification"
             ) {
-                updateRoomConnectionCount(
+                updateRoomCounts(
                     data.roomConnectionCount,
+                    data.roomUserCount,
                 );
 
                 addMessage(
