@@ -32,7 +32,7 @@ function createContext(): MessageHandlerContext {
 }
 
 function createSocket(): ChatWebSocket {
-    return { nickname: null, room_id: null } as ChatWebSocket;
+    return { userId: null, nickname: null, room_id: null } as ChatWebSocket;
 }
 
 describe("message handlers", () => {
@@ -78,10 +78,12 @@ describe("message handlers", () => {
         const socket = createSocket();
 
         await expect(registerHandler.handle(socket, {
-            type: "register", nickname: " neo ", room_id: " room-1 ",
+            type: "register", userId: " user-1 ", nickname: " neo ", room_id: " room-1 ",
         }, context)).resolves.toBe(true);
-        expect(socket).toMatchObject({ nickname: "neo", room_id: "room-1" });
-        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({ type: "register-success" }));
+        expect(socket).toMatchObject({ userId: "user-1", nickname: "neo", room_id: "room-1" });
+        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
+            type: "register-success", userId: "user-1",
+        }));
         expect(context.sendRoomHistory).toHaveBeenCalledWith(socket, "room-1");
     });
 
@@ -90,13 +92,13 @@ describe("message handlers", () => {
         const socket = createSocket();
 
         await expect(registerHandler.handle(socket, {
-            type: "register", nickname: " ", room_id: "room-1",
+            type: "register", userId: "user-1", nickname: " ", room_id: "room-1",
         }, context)).resolves.toBe(false);
         expect(context.sendError).toHaveBeenLastCalledWith(socket, "NICKNAME_REQUIRED");
 
         socket.nickname = "neo";
         await expect(registerHandler.handle(socket, {
-            type: "register", nickname: "trinity", room_id: "room-1",
+            type: "register", userId: "user-2", nickname: "trinity", room_id: "room-1",
         }, context)).resolves.toBe(false);
         expect(context.sendError).toHaveBeenLastCalledWith(socket, "ALREADY_REGISTERED");
     });
@@ -110,7 +112,7 @@ describe("message handlers", () => {
         }));
 
         const registration = registerHandler.handle(socket, {
-            type: "register", nickname: "neo", room_id: "room-1",
+            type: "register", userId: "user-1", nickname: "neo", room_id: "room-1",
         }, context);
 
         await vi.waitFor(() => {
@@ -119,6 +121,7 @@ describe("message handlers", () => {
         });
         expect(context.roomService.broadcastToRoom).not.toHaveBeenCalled();
 
+        socket.userId = null;
         socket.nickname = null;
         socket.room_id = null;
         resolveHistory?.();

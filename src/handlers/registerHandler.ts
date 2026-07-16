@@ -10,11 +10,11 @@ export const registerHandler: RegisterHandler = {
     ) => {
         const { roomService, sendJson, sendError, sendRoomHistory, createTimestamp } = context;
 
-        if (ws.nickname || ws.room_id) {
+        if (ws.userId || ws.nickname || ws.room_id) {
             await sendError(ws, "ALREADY_REGISTERED");
             return false;
         }
-
+        const userId = data.userId.trim();
         const nickname = data.nickname.trim();
         const roomId = data.room_id.trim();
         if (!nickname) {
@@ -36,10 +36,13 @@ export const registerHandler: RegisterHandler = {
 
         const registerMessage: RegisterMessage = {
             type: "register",
+            userId,
             nickname,
             room_id: roomId,
         };
         const joinedRoomId = roomService.join(ws, registerMessage.room_id);
+
+        ws.userId = registerMessage.userId;
         ws.nickname = registerMessage.nickname;
 
         const roomConnectionCount = roomService.getConnectionCount(joinedRoomId);
@@ -48,6 +51,7 @@ export const registerHandler: RegisterHandler = {
 
         await sendJson(ws, {
             type: "register-success",
+            userId,
             nickname,
             room_id: joinedRoomId,
             roomConnectionCount,

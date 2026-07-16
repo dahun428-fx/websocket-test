@@ -85,6 +85,10 @@
             background: #f5f5f5;
         }
 
+        .room-info>div+div {
+            margin-top: 6px;
+        }
+
         .history-actions {
             margin-bottom: 12px;
         }
@@ -131,6 +135,7 @@
         .message-form {
             display: flex;
             gap: 8px;
+            margin-top: 12px;
         }
 
         .message-form input {
@@ -164,6 +169,14 @@
         <h2>2. 채팅방 입장</h2>
 
         <div class="field">
+            <label for="userIdInput">
+                사용자 ID
+            </label>
+
+            <input id="userIdInput" type="text" maxlength="50" placeholder="예: user-100" />
+        </div>
+
+        <div class="field">
             <label for="nicknameInput">
                 닉네임
             </label>
@@ -184,6 +197,11 @@
         </button>
 
         <div id="roomInfo" class="room-info">
+            <div>
+                사용자 ID:
+                <strong id="currentUserId">-</strong>
+            </div>
+
             <div>
                 현재 방:
                 <strong id="currentRoom">-</strong>
@@ -212,7 +230,7 @@
 
         <ul id="messages"></ul>
 
-        <div class="message-form" style="margin-top: 12px;">
+        <div class="message-form">
             <input id="messageInput" type="text" maxlength="1000" placeholder="메시지를 입력하세요" disabled />
 
             <button id="sendBtn" type="button" disabled>
@@ -224,25 +242,12 @@
     <script>
         let socket = null;
 
+        let registeredUserId = null;
         let registeredNickname = null;
         let joinedRoomId = null;
 
-        /**
-         * 현재 화면에 표시된 채팅 중
-         * 가장 작은 메시지 ID입니다.
-         */
         let oldestMessageId = null;
-
-        /**
-         * 이전 메시지를 요청하고 있는지 나타냅니다.
-         * 빠르게 버튼을 여러 번 누르는 것을 막습니다.
-         */
         let isHistoryLoading = false;
-
-        /**
-         * 현재 메시지보다 더 오래된 메시지가
-         * DB에 남아 있는지를 나타냅니다.
-         */
         let hasMoreHistory = false;
 
         const connectionStatus =
@@ -258,6 +263,11 @@
         const disconnectBtn =
             document.getElementById(
                 "disconnectBtn",
+            );
+
+        const userIdInput =
+            document.getElementById(
+                "userIdInput",
             );
 
         const nicknameInput =
@@ -278,6 +288,11 @@
         const roomInfo =
             document.getElementById(
                 "roomInfo",
+            );
+
+        const currentUserId =
+            document.getElementById(
+                "currentUserId",
             );
 
         const currentRoom =
@@ -315,12 +330,6 @@
                 "sendBtn",
             );
 
-        /**
-         * WebSocket 서버 주소입니다.
-         *
-         * 현재 페이지를 연 서버와 동일한
-         * host와 port를 사용합니다.
-         */
         function createWebSocketUrl() {
             const protocol =
                 window.location.protocol === "https:"
@@ -408,10 +417,6 @@
             return li;
         }
 
-        /**
-         * 새로운 채팅이나 시스템 메시지를
-         * 목록 아래쪽에 추가합니다.
-         */
         function addMessage(
             text,
             className = "",
@@ -430,12 +435,6 @@
                 messages.scrollHeight;
         }
 
-        /**
-         * 과거 메시지를 기존 목록의 위쪽에 추가합니다.
-         *
-         * 메시지를 추가하기 전후의 scrollHeight 차이를 이용해
-         * 사용자가 보고 있던 위치를 유지합니다.
-         */
         function prependChatMessages(
             chatMessages,
         ) {
@@ -480,10 +479,6 @@
                 previousScrollHeight;
         }
 
-        /**
-         * 받은 채팅 목록에서 가장 작은 메시지 ID를 찾아
-         * oldestMessageId를 갱신합니다.
-         */
         function updateOldestMessageId(
             chatMessages,
         ) {
@@ -539,9 +534,6 @@
                 String(count);
         }
 
-        /**
-         * 서버로 JSON 메시지를 전송합니다.
-         */
         function sendJson(payload) {
             if (!socket) {
                 addMessage(
@@ -571,10 +563,8 @@
             return true;
         }
 
-        /**
-         * UI와 클라이언트 상태를 초기화합니다.
-         */
         function resetUi() {
+            registeredUserId = null;
             registeredNickname = null;
             joinedRoomId = null;
 
@@ -587,6 +577,7 @@
 
             registerBtn.disabled = true;
 
+            userIdInput.disabled = false;
             nicknameInput.disabled = false;
             roomInput.disabled = false;
 
@@ -598,6 +589,9 @@
 
             roomInfo.style.display =
                 "none";
+
+            currentUserId.textContent =
+                "-";
 
             currentRoom.textContent =
                 "-";
@@ -613,9 +607,6 @@
             );
         }
 
-        /**
-         * WebSocket 연결을 시작합니다.
-         */
         function connectWebSocket() {
             if (
                 socket &&
@@ -715,15 +706,25 @@
             );
         }
 
-        /**
-         * 닉네임 등록 및 방 입장 요청을 전송합니다.
-         */
         function registerUser() {
+            const userId =
+                userIdInput.value.trim();
+
             const nickname =
                 nicknameInput.value.trim();
 
             const roomId =
                 roomInput.value.trim();
+
+            if (!userId) {
+                addMessage(
+                    "사용자 ID를 입력하세요.",
+                    "error",
+                );
+
+                userIdInput.focus();
+                return;
+            }
 
             if (!nickname) {
                 addMessage(
@@ -747,14 +748,12 @@
 
             sendJson({
                 type: "register",
+                userId,
                 nickname,
                 room_id: roomId,
             });
         }
 
-        /**
-         * 채팅 메시지를 전송합니다.
-         */
         function sendChatMessage() {
             if (!joinedRoomId) {
                 addMessage(
@@ -789,10 +788,6 @@
             }
         }
 
-        /**
-         * 현재 화면에서 가장 오래된 메시지보다
-         * 더 이전의 메시지를 요청합니다.
-         */
         function requestPreviousHistory() {
             if (!joinedRoomId) {
                 addMessage(
@@ -849,9 +844,6 @@
             }
         }
 
-        /**
-         * 서버에서 받은 JSON 메시지를 처리합니다.
-         */
         function handleServerMessage(
             rawData,
         ) {
@@ -901,6 +893,9 @@
                 data.type ===
                 "register-success"
             ) {
+                registeredUserId =
+                    data.userId;
+
                 registeredNickname =
                     data.nickname;
 
@@ -910,6 +905,9 @@
                 oldestMessageId = null;
                 isHistoryLoading = false;
                 hasMoreHistory = false;
+
+                userIdInput.disabled =
+                    true;
 
                 nicknameInput.disabled =
                     true;
@@ -928,6 +926,9 @@
 
                 loadPreviousBtn.disabled =
                     true;
+
+                currentUserId.textContent =
+                    registeredUserId;
 
                 currentRoom.textContent =
                     joinedRoomId;
@@ -953,10 +954,6 @@
                 return;
             }
 
-            /**
-             * 최초 입장 History와
-             * 추가 조회 History를 모두 처리합니다.
-             */
             if (
                 data.type === "history"
             ) {
@@ -998,16 +995,6 @@
 
                 loadPreviousBtn.disabled =
                     !hasMoreHistory;
-
-                if (
-                    chatMessages.length ===
-                    0 &&
-                    !hasMoreHistory
-                ) {
-                    console.log(
-                        "더 이상 이전 메시지가 없습니다.",
-                    );
-                }
 
                 return;
             }
@@ -1066,10 +1053,6 @@
                     data.createdAt,
                 );
 
-                /**
-                 * History 요청에 실패한 경우
-                 * 버튼을 다시 사용할 수 있게 합니다.
-                 */
                 if (
                     isHistoryLoading
                 ) {
@@ -1133,6 +1116,17 @@
                     event.preventDefault();
 
                     sendChatMessage();
+                }
+            },
+        );
+
+        userIdInput.addEventListener(
+            "keydown",
+            (event) => {
+                if (
+                    event.key === "Enter"
+                ) {
+                    nicknameInput.focus();
                 }
             },
         );

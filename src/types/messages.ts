@@ -14,6 +14,7 @@ export interface ConnectionMessage {
 
 export interface RegisterSuccessMessage {
     type: "register-success";
+    userId: string;
     nickname: string;
     room_id: string;
     roomConnectionCount: number;

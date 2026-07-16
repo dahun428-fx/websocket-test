@@ -152,6 +152,7 @@ function handleClose(ws: ChatWebSocket): void {
 
 wss.on("connection", (connection) => {
     const ws = connection as ChatWebSocket;
+    ws.userId = null;
     ws.nickname = null;
     ws.room_id = null;
     ws.messageQueue = Promise.resolve();
