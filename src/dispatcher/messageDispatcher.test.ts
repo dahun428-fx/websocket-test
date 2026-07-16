@@ -9,6 +9,7 @@ describe("dispatchMessage", () => {
         const context: MessageHandlerContext = {
             roomService: {
                 broadcastToRoom: vi.fn(), getConnectionCount: vi.fn(), getUserCount: vi.fn(), getClients: vi.fn(),
+                getUserConnections: vi.fn(), sendToUser: vi.fn(),
                 join: vi.fn(), leave: vi.fn(),
             },
             messageRepository: {

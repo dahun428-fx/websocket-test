@@ -58,6 +58,12 @@ export interface NotificationMessage {
     createdAt: string;
 }
 
+export interface UserNotificationMessage {
+    type: "user-notification";
+    message: string;
+    createdAt: string;
+}
+
 export interface ErrorMessage {
     type: "error";
     code: ErrorCode;
@@ -71,4 +77,5 @@ export type ServerMessage =
     | HistoryMessage
     | ChatMessage
     | NotificationMessage
+    | UserNotificationMessage
     | ErrorMessage;

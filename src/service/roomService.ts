@@ -4,12 +4,14 @@ import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
 
 export interface RoomService {
-    getUserCount(roomId: string): number;
-    broadcastToRoom(roomId: string, payload: ServerMessage): number;
-    getConnectionCount(roomId: string): number;
-    getClients(roomId: string): ChatWebSocket[];
     join(ws: ChatWebSocket, roomId: string): string;
     leave(ws: ChatWebSocket | null | undefined): string | null;
+    getClients(roomId: string): ChatWebSocket[];
+    getConnectionCount(roomId: string): number;
+    getUserCount(roomId: string): number;
+    getUserConnections(userId: string): ChatWebSocket[];
+    sendToUser(userId: string, payload: ServerMessage): number;
+    broadcastToRoom(roomId: string, payload: ServerMessage): number;
 }
 
 function createRoomService(wss: WebSocketServer): RoomService {
@@ -111,8 +113,29 @@ function createRoomService(wss: WebSocketServer): RoomService {
     }
 
     /**
-     * 현재 WebSocket 연결을 특정 방에 등록합니다.
+     * 특정 사용자의 열린 WebSocket 연결 목록을 반환합니다.
      */
+    function getUserConnections(userId: string): ChatWebSocket[] {
+        return [...wss.clients].filter((client): client is ChatWebSocket => {
+            const chatClient = client as ChatWebSocket;
+            return (
+                chatClient.readyState === WebSocket.OPEN &&
+                chatClient.userId === userId
+            );
+        });
+    }
+
+    function sendToUser(userId: string, payload: ServerMessage): number {
+        const clients = getUserConnections(userId);
+        const json = JSON.stringify(payload);
+
+        clients.forEach((client) => {
+            client.send(json);
+        });
+
+        return clients.length;
+    }
+
     function join(ws: ChatWebSocket, roomId: string): string {
         if (!ws) {
             throw new Error("WebSocket 연결이 필요합니다.");
@@ -149,12 +172,14 @@ function createRoomService(wss: WebSocketServer): RoomService {
     }
 
     return {
-        broadcastToRoom,
-        getUserCount,
-        getConnectionCount,
-        getClients,
         join,
         leave,
+        getClients,
+        getConnectionCount,
+        getUserCount,
+        getUserConnections,
+        sendToUser,
+        broadcastToRoom,
     };
 }
 

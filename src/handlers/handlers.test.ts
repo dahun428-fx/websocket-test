@@ -12,6 +12,8 @@ function createContext(): MessageHandlerContext {
             broadcastToRoom: vi.fn(() => 1),
             getConnectionCount: vi.fn(() => 1),
             getUserCount: vi.fn(() => 1),
+            getUserConnections: vi.fn(() => []),
+            sendToUser: vi.fn(() => 0),
             getClients: vi.fn(() => []),
             join: vi.fn((ws, roomId) => {
                 ws.room_id = roomId;

@@ -75,4 +75,39 @@ describe("roomService", () => {
         expect(closed.send).not.toHaveBeenCalled();
         expect(otherRoom.send).not.toHaveBeenCalled();
     });
+
+    it("returns and sends only to open connections for the selected user", () => {
+        const firstUserConnection = createClient("room-1", true, "user-100");
+        const secondUserConnection = createClient("room-2", true, "user-100");
+        const closedUserConnection = createClient("room-1", false, "user-100");
+        const otherUserConnection = createClient("room-1", true, "user-200");
+        const wss = {
+            clients: new Set([
+                firstUserConnection,
+                secondUserConnection,
+                closedUserConnection,
+                otherUserConnection,
+            ]),
+        } as unknown as WebSocketServer;
+        const service = createRoomService(wss);
+
+        expect(service.getUserConnections("user-100")).toEqual([
+            firstUserConnection,
+            secondUserConnection,
+        ]);
+
+        const payload = {
+            type: "user-notification" as const,
+            message: "테스트 알림",
+            createdAt: "2026-01-01T00:00:00.000Z",
+        };
+        const sent = service.sendToUser("user-100", payload);
+        const json = JSON.stringify(payload);
+
+        expect(sent).toBe(2);
+        expect(firstUserConnection.send).toHaveBeenCalledWith(json);
+        expect(secondUserConnection.send).toHaveBeenCalledWith(json);
+        expect(closedUserConnection.send).not.toHaveBeenCalled();
+        expect(otherUserConnection.send).not.toHaveBeenCalled();
+    });
 });
