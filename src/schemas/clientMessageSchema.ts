@@ -2,8 +2,8 @@ import { z } from 'zod'
 
 export const registerMessageSchema = z.object({
     type: z.literal('register'),
-    userId: z.string().trim().min(1, "사용자 ID가 필요합니다").max(50, "사용자 ID 는 50자 이하로 입력하세요."),
-    nickname: z.string().trim().min(1, '닉네임을 입력하세요').max(20, '닉네임은 20자 이하로 입력하세요.'),
+    token: z.string().trim().min(1, "인증 토큰이 필요합니다."),
+    nickname: z.string().trim().min(1, '닉네임을 입력하세요.').max(20, '닉네임은 20자 이하로 입력하세요.'),
     room_id: z.string().trim().min(1, "방 ID를 입력하세요.").max(20, "방 ID는 20자 이하로 입력하세요."),
 })
 

@@ -1,8 +1,10 @@
+import jwt from "jsonwebtoken";
 import { describe, expect, it, vi } from "vitest";
 
 import { chatHandler } from "./chatHandler";
 import { historyHandler } from "./historyHandler";
 import { registerHandler } from "./registerHandler";
+import { createAccessToken } from "../auth/tokenService";
 import type { MessageHandlerContext } from "../types/handler";
 import type { ChatWebSocket } from "../types/websocket";
 
@@ -36,6 +38,23 @@ function createContext(): MessageHandlerContext {
 
 function createSocket(): ChatWebSocket {
     return { userId: null, nickname: null, room_id: null } as ChatWebSocket;
+}
+
+function createTestToken(
+    userId = "user-1",
+    nickname = "neo",
+): string {
+    process.env.JWT_SECRET = "test-secret";
+    return createAccessToken(userId, nickname);
+}
+
+function createExpiredTestToken(): string {
+    process.env.JWT_SECRET = "test-secret";
+    return jwt.sign(
+        { sub: "user-1", nickname: "neo" },
+        process.env.JWT_SECRET,
+        { expiresIn: "-1s" },
+    );
 }
 
 describe("message handlers", () => {
@@ -81,7 +100,7 @@ describe("message handlers", () => {
         const socket = createSocket();
 
         await expect(registerHandler.handle(socket, {
-            type: "register", userId: " user-1 ", nickname: " neo ", room_id: " room-1 ",
+            type: "register", token: createTestToken("user-1"), nickname: "neo", room_id: "room-1",
         }, context)).resolves.toBe(true);
         expect(socket).toMatchObject({ userId: "user-1", nickname: "neo", room_id: "room-1" });
         expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
@@ -90,18 +109,38 @@ describe("message handlers", () => {
         expect(context.sendRoomHistory).toHaveBeenCalledWith(socket, "room-1");
     });
 
-    it("returns error codes for invalid or repeated registration", async () => {
+    it("returns an invalid token error for malformed tokens", async () => {
+        const context = createContext();
+        const socket = createSocket();
+        process.env.JWT_SECRET = "test-secret";
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        await expect(registerHandler.handle(socket, {
+            type: "register", token: "invalid-token", nickname: "neo", room_id: "room-1",
+        }, context)).resolves.toBe(false);
+        expect(context.sendError).toHaveBeenLastCalledWith(socket, "INVALID_ACCESS_TOKEN");
+        expect(context.roomService.join).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it("returns an expired token error for expired tokens", async () => {
         const context = createContext();
         const socket = createSocket();
 
         await expect(registerHandler.handle(socket, {
-            type: "register", userId: "user-1", nickname: " ", room_id: "room-1",
+            type: "register", token: createExpiredTestToken(), nickname: "neo", room_id: "room-1",
         }, context)).resolves.toBe(false);
-        expect(context.sendError).toHaveBeenLastCalledWith(socket, "NICKNAME_REQUIRED");
+        expect(context.sendError).toHaveBeenLastCalledWith(socket, "ACCESS_TOKEN_EXPIRED");
+        expect(context.roomService.join).not.toHaveBeenCalled();
+    });
+
+    it("returns an error code for repeated registration", async () => {
+        const context = createContext();
+        const socket = createSocket();
 
         socket.nickname = "neo";
         await expect(registerHandler.handle(socket, {
-            type: "register", userId: "user-2", nickname: "trinity", room_id: "room-1",
+            type: "register", token: createTestToken("user-2", "trinity"), nickname: "trinity", room_id: "room-1",
         }, context)).resolves.toBe(false);
         expect(context.sendError).toHaveBeenLastCalledWith(socket, "ALREADY_REGISTERED");
     });
@@ -115,7 +154,7 @@ describe("message handlers", () => {
         }));
 
         const registration = registerHandler.handle(socket, {
-            type: "register", userId: "user-1", nickname: "neo", room_id: "room-1",
+            type: "register", token: createTestToken("user-1"), nickname: "neo", room_id: "room-1",
         }, context);
 
         await vi.waitFor(() => {

@@ -1,5 +1,8 @@
+import { TokenExpiredError } from "jsonwebtoken";
+
+import { verifyAccessToken } from "../auth/tokenService";
 import type { RegisterHandler } from "../types/handler";
-import type { RegisterMessage } from "../types/messages";
+import type { AuthTokenPayload } from "../types/auth";
 
 export const registerHandler: RegisterHandler = {
     type: 'register',
@@ -14,36 +17,28 @@ export const registerHandler: RegisterHandler = {
             await sendError(ws, "ALREADY_REGISTERED");
             return false;
         }
-        const userId = data.userId.trim();
-        const nickname = data.nickname.trim();
-        const roomId = data.room_id.trim();
-        if (!nickname) {
-            await sendError(ws, "NICKNAME_REQUIRED");
-            return false;
-        }
-        if (!roomId) {
-            await sendError(ws, "ROOM_ID_REQUIRED");
-            return false;
-        }
-        if (nickname.length > 20) {
-            await sendError(ws, "NICKNAME_TOO_LONG");
-            return false;
-        }
-        if (roomId.length > 20) {
-            await sendError(ws, "ROOM_ID_TOO_LONG");
+        let tokenPayload: AuthTokenPayload;
+
+        try {
+            tokenPayload = verifyAccessToken(data.token);
+        } catch (error) {
+            if (error instanceof TokenExpiredError) {
+                await sendError(ws, "ACCESS_TOKEN_EXPIRED");
+                return false;
+            }
+
+            console.error("JWT 검증 실패:", error);
+            await sendError(ws, "INVALID_ACCESS_TOKEN");
             return false;
         }
 
-        const registerMessage: RegisterMessage = {
-            type: "register",
-            userId,
-            nickname,
-            room_id: roomId,
-        };
-        const joinedRoomId = roomService.join(ws, registerMessage.room_id);
+        const userId = tokenPayload.sub;
+        const nickname = data.nickname;
+        const roomId = data.room_id;
+        const joinedRoomId = roomService.join(ws, roomId);
 
-        ws.userId = registerMessage.userId;
-        ws.nickname = registerMessage.nickname;
+        ws.userId = userId;
+        ws.nickname = nickname;
 
         const roomConnectionCount = roomService.getConnectionCount(joinedRoomId);
         console.log(`등록 완료: nickname=${ws.nickname}, room_id=${joinedRoomId}`);

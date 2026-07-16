@@ -46,12 +46,13 @@
             font-weight: 600;
         }
 
-        input {
+        input,
+        textarea {
             width: 100%;
             padding: 10px 12px;
             border: 1px solid #ccc;
             border-radius: 6px;
-            font-size: 14px;
+            font: inherit;
         }
 
         button {
@@ -169,11 +170,11 @@
         <h2>2. 채팅방 입장</h2>
 
         <div class="field">
-            <label for="userIdInput">
-                사용자 ID
+            <label for="tokenInput">
+                Access Token
             </label>
 
-            <input id="userIdInput" type="text" maxlength="50" placeholder="예: user-100" />
+            <textarea id="tokenInput" rows="4" placeholder="JWT 토큰을 입력하세요"></textarea>
         </div>
 
         <div class="field">
@@ -269,9 +270,9 @@
                 "disconnectBtn",
             );
 
-        const userIdInput =
+        const tokenInput =
             document.getElementById(
-                "userIdInput",
+                "tokenInput",
             );
 
         const nicknameInput =
@@ -591,7 +592,7 @@
 
             registerBtn.disabled = true;
 
-            userIdInput.disabled = false;
+            tokenInput.disabled = false;
             nicknameInput.disabled = false;
             roomInput.disabled = false;
 
@@ -721,8 +722,8 @@
         }
 
         function registerUser() {
-            const userId =
-                userIdInput.value.trim();
+            const token =
+                tokenInput.value.trim();
 
             const nickname =
                 nicknameInput.value.trim();
@@ -730,13 +731,13 @@
             const roomId =
                 roomInput.value.trim();
 
-            if (!userId) {
+            if (!token) {
                 addMessage(
-                    "사용자 ID를 입력하세요.",
+                    "인증 토큰을 입력하세요.",
                     "error",
                 );
 
-                userIdInput.focus();
+                tokenInput.focus();
                 return;
             }
 
@@ -762,7 +763,7 @@
 
             sendJson({
                 type: "register",
-                userId,
+                token,
                 nickname,
                 room_id: roomId,
             });
@@ -920,7 +921,7 @@
                 isHistoryLoading = false;
                 hasMoreHistory = false;
 
-                userIdInput.disabled =
+                tokenInput.disabled =
                     true;
 
                 nicknameInput.disabled =
@@ -1138,12 +1139,14 @@
             },
         );
 
-        userIdInput.addEventListener(
+        tokenInput.addEventListener(
             "keydown",
             (event) => {
                 if (
-                    event.key === "Enter"
+                    event.key === "Enter" &&
+                    !event.shiftKey
                 ) {
+                    event.preventDefault();
                     nicknameInput.focus();
                 }
             },

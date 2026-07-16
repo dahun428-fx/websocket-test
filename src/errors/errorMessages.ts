@@ -1,6 +1,8 @@
 export const ERROR_MESSAGES = {
     MESSAGE_PARSE_FAILED: "메시지를 해석할 수 없습니다.",
     ALREADY_REGISTERED: "이미 닉네임을 등록하고 방에 입장한 상태입니다.",
+    INVALID_ACCESS_TOKEN: "올바르지 않은 인증 토큰입니다.",
+    ACCESS_TOKEN_EXPIRED: "인증 토큰이 만료되었습니다.",
     NICKNAME_REQUIRED: "닉네임을 입력하세요.",
     ROOM_ID_REQUIRED: "방 ID를 입력하세요.",
     NICKNAME_TOO_LONG: "닉네임은 20자 이하로 입력하세요.",

@@ -4,8 +4,8 @@ import { parseClientMessage } from "./messageParser";
 
 describe("parseClientMessage", () => {
     it("parses and normalizes valid register and chat messages", () => {
-        expect(parseClientMessage(Buffer.from('{"type":"register","userId":" user-1 ","nickname":" neo ","room_id":" room-1 "}')))
-            .toEqual({ type: "register", userId: "user-1", nickname: "neo", room_id: "room-1" });
+        expect(parseClientMessage(Buffer.from('{"type":"register","token":" token ","nickname":" neo ","room_id":" room-1 "}')))
+            .toEqual({ type: "register", token: "token", nickname: "neo", room_id: "room-1" });
         expect(parseClientMessage(Buffer.from('{"type":"chat","message":" hello "}')))
             .toEqual({ type: "chat", message: "hello" });
     });
@@ -17,8 +17,11 @@ describe("parseClientMessage", () => {
         expect(parseClientMessage(Buffer.from(
             '{"type":"register","nickname":"neo","room_id":"room-1"}',
         ))).toBeNull();
+        expect(parseClientMessage(Buffer.from(
+            '{"type":"register","userId":"user-1","nickname":"neo","room_id":"room-1"}',
+        ))).toBeNull();
         expect(parseClientMessage(Buffer.from(JSON.stringify({
-            type: "register", userId: "user-1", nickname: "x".repeat(21), room_id: "room-1",
+            type: "register", token: "token", nickname: "x".repeat(21), room_id: "room-1",
         })))).toBeNull();
     });
 
