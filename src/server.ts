@@ -17,6 +17,7 @@ import { dispatchMessage } from "./dispatcher/messageDispatcher";
 import { enqueueMessage } from "./queue/messageQueue";
 import { ERROR_MESSAGES } from "./errors/errorMessages";
 import type { ErrorCode } from "./errors/errorMessages";
+import { createAccessToken } from "./auth/tokenService";
 import { closeDatabase, initializeDatabase } from "./database/database";
 import {
     logHeartbeat,
@@ -33,8 +34,130 @@ const HEARTBEAT_INTERVAL_MS = resolveHeartbeatIntervalMs(
 let isShuttingDown = false;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 
+interface LoginRequestBody {
+    userId?: unknown;
+    nickname?: unknown;
+}
+
+function sendHttpJson(
+    res: ServerResponse,
+    statusCode: number,
+    payload: unknown,
+): void {
+    res.writeHead(statusCode, {
+        "Content-Type": "application/json; charset=utf-8",
+    });
+    res.end(JSON.stringify(payload));
+}
+
+function readRequestBody(req: IncomingMessage): Promise<string> {
+    return new Promise((resolve, reject) => {
+        let body = "";
+
+        req.setEncoding("utf8");
+        req.on("data", (chunk: string) => {
+            body += chunk;
+        });
+        req.on("end", () => resolve(body));
+        req.on("error", reject);
+    });
+}
+
+function parseLoginRequestBody(rawBody: string): LoginRequestBody | null {
+    try {
+        return JSON.parse(rawBody) as LoginRequestBody;
+    } catch {
+        return null;
+    }
+}
+
+async function handleLoginRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+): Promise<void> {
+    if (req.method !== "POST") {
+        sendHttpJson(res, 405, {
+            message: "POST 요청만 허용됩니다.",
+        });
+        return;
+    }
+
+    const rawBody = await readRequestBody(req);
+    const body = parseLoginRequestBody(rawBody);
+
+    if (!body) {
+        sendHttpJson(res, 400, {
+            message: "요청 본문을 해석할 수 없습니다.",
+        });
+        return;
+    }
+
+    const userId =
+        typeof body.userId === "string"
+            ? body.userId.trim()
+            : "";
+    const nickname =
+        typeof body.nickname === "string"
+            ? body.nickname.trim()
+            : "";
+
+    if (!userId) {
+        sendHttpJson(res, 400, {
+            message: "사용자 ID를 입력하세요.",
+        });
+        return;
+    }
+
+    if (!nickname) {
+        sendHttpJson(res, 400, {
+            message: "닉네임을 입력하세요.",
+        });
+        return;
+    }
+
+    if (userId.length > 50) {
+        sendHttpJson(res, 400, {
+            message: "사용자 ID는 50자 이하로 입력하세요.",
+        });
+        return;
+    }
+
+    if (nickname.length > 20) {
+        sendHttpJson(res, 400, {
+            message: "닉네임은 20자 이하로 입력하세요.",
+        });
+        return;
+    }
+
+    const token = createAccessToken(
+        userId,
+        nickname,
+    );
+
+    sendHttpJson(res, 200, {
+        token,
+        userId,
+        nickname,
+    });
+}
+
 const server = http.createServer(
-    (_req: IncomingMessage, res: ServerResponse) => {
+    (req: IncomingMessage, res: ServerResponse) => {
+        const requestUrl = new URL(
+            req.url ?? "/",
+            `http://${req.headers.host ?? "localhost"}`,
+        );
+
+        if (requestUrl.pathname === "/auth/login") {
+            void handleLoginRequest(req, res).catch((error) => {
+                console.error("로그인 요청 처리 실패:", error);
+                sendHttpJson(res, 500, {
+                    message: "서버 내부 오류가 발생했습니다.",
+                });
+            });
+            return;
+        }
+
         const filePath = path.join(__dirname, "..", "public", "index.html");
 
         fs.readFile(filePath, (error, data) => {

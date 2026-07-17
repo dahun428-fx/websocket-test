@@ -46,13 +46,12 @@
             font-weight: 600;
         }
 
-        input,
-        textarea {
+        input {
             width: 100%;
             padding: 10px 12px;
             border: 1px solid #ccc;
             border-radius: 6px;
-            font: inherit;
+            font-size: 14px;
         }
 
         button {
@@ -170,11 +169,11 @@
         <h2>2. 채팅방 입장</h2>
 
         <div class="field">
-            <label for="tokenInput">
-                Access Token
+            <label for="userIdInput">
+                사용자 ID
             </label>
 
-            <textarea id="tokenInput" rows="4" placeholder="JWT 토큰을 입력하세요"></textarea>
+            <input id="userIdInput" type="text" maxlength="50" placeholder="예: user-100" />
         </div>
 
         <div class="field">
@@ -250,6 +249,7 @@
         let registeredUserId = null;
         let registeredNickname = null;
         let joinedRoomId = null;
+        let accessToken = null;
 
         let oldestMessageId = null;
         let isHistoryLoading = false;
@@ -270,9 +270,9 @@
                 "disconnectBtn",
             );
 
-        const tokenInput =
+        const userIdInput =
             document.getElementById(
-                "tokenInput",
+                "userIdInput",
             );
 
         const nicknameInput =
@@ -582,6 +582,7 @@
             registeredUserId = null;
             registeredNickname = null;
             joinedRoomId = null;
+            accessToken = null;
 
             oldestMessageId = null;
             isHistoryLoading = false;
@@ -592,7 +593,7 @@
 
             registerBtn.disabled = true;
 
-            tokenInput.disabled = false;
+            userIdInput.disabled = false;
             nicknameInput.disabled = false;
             roomInput.disabled = false;
 
@@ -721,9 +722,48 @@
             );
         }
 
-        function registerUser() {
-            const token =
-                tokenInput.value.trim();
+        async function requestAccessToken(
+            userId,
+            nickname,
+        ) {
+            const response =
+                await fetch(
+                    "/auth/login",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+                        },
+                        body: JSON.stringify({
+                            userId,
+                            nickname,
+                        }),
+                    },
+                );
+
+            const data =
+                await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                    "로그인에 실패했습니다.",
+                );
+            }
+
+            if (!data.token) {
+                throw new Error(
+                    "인증 토큰을 발급받지 못했습니다.",
+                );
+            }
+
+            return data.token;
+        }
+
+        async function registerUser() {
+            const userId =
+                userIdInput.value.trim();
 
             const nickname =
                 nicknameInput.value.trim();
@@ -731,13 +771,13 @@
             const roomId =
                 roomInput.value.trim();
 
-            if (!token) {
+            if (!userId) {
                 addMessage(
-                    "인증 토큰을 입력하세요.",
+                    "사용자 ID를 입력하세요.",
                     "error",
                 );
 
-                tokenInput.focus();
+                userIdInput.focus();
                 return;
             }
 
@@ -761,12 +801,40 @@
                 return;
             }
 
-            sendJson({
-                type: "register",
-                token,
-                nickname,
-                room_id: roomId,
-            });
+            registerBtn.disabled = true;
+
+            try {
+                accessToken =
+                    await requestAccessToken(
+                        userId,
+                        nickname,
+                    );
+
+                const isSent =
+                    sendJson({
+                        type: "register",
+                        token: accessToken,
+                        nickname,
+                        room_id: roomId,
+                    });
+
+                if (!isSent) {
+                    registerBtn.disabled =
+                        false;
+                }
+            } catch (error) {
+                accessToken = null;
+
+                addMessage(
+                    error instanceof Error
+                        ? error.message
+                        : "로그인에 실패했습니다.",
+                    "error",
+                );
+
+                registerBtn.disabled =
+                    false;
+            }
         }
 
         function sendChatMessage() {
@@ -921,7 +989,7 @@
                 isHistoryLoading = false;
                 hasMoreHistory = false;
 
-                tokenInput.disabled =
+                userIdInput.disabled =
                     true;
 
                 nicknameInput.disabled =
@@ -1139,14 +1207,12 @@
             },
         );
 
-        tokenInput.addEventListener(
+        userIdInput.addEventListener(
             "keydown",
             (event) => {
                 if (
-                    event.key === "Enter" &&
-                    !event.shiftKey
+                    event.key === "Enter"
                 ) {
-                    event.preventDefault();
                     nicknameInput.focus();
                 }
             },
