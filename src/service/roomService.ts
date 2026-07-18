@@ -4,183 +4,160 @@ import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
 
 export interface RoomService {
-    join(ws: ChatWebSocket, roomId: string): string;
-    leave(ws: ChatWebSocket | null | undefined): string | null;
-    getClients(roomId: string): ChatWebSocket[];
-    getConnectionCount(roomId: string): number;
-    getUserCount(roomId: string): number;
-    getUserConnections(userId: string): ChatWebSocket[];
-    sendToUser(userId: string, payload: ServerMessage): number;
-    broadcastToRoom(roomId: string, payload: ServerMessage): number;
+  join(ws: ChatWebSocket, roomId: string): string;
+  leave(ws: ChatWebSocket | null | undefined): string | null;
+  getClients(roomId: string): ChatWebSocket[];
+  getConnectionCount(roomId: string): number;
+  getUserCount(roomId: string): number;
+  getUserConnections(userId: string): ChatWebSocket[];
+  sendToUser(userId: string, payload: ServerMessage): number;
+  broadcastToRoom(roomId: string, payload: ServerMessage): number;
 }
 
 function createRoomService(wss: WebSocketServer): RoomService {
-    if (!wss || !wss.clients) {
-        throw new Error(
-            "createRoomService에는 WebSocket.Server 인스턴스가 필요합니다.",
-        );
+  if (!wss || !wss.clients) {
+    throw new Error("createRoomService에는 WebSocketServer 인스턴스가 필요합니다.");
+  }
+
+  function getUserCount(roomId: string): number {
+    const userIds = new Set<string>();
+
+    wss.clients.forEach((client) => {
+      const ws = client as ChatWebSocket;
+      const isOpen = ws.readyState === WebSocket.OPEN;
+      const isSameRoom = ws.room_id === roomId;
+
+      if (isOpen && isSameRoom && ws.userId) {
+        userIds.add(ws.userId);
+      }
+    });
+
+    return userIds.size;
+  }
+
+  function broadcastToRoom(roomId: string, payload: ServerMessage): number {
+    if (!roomId) {
+      return 0;
     }
 
-    function getUserCount(roomId: string): number {
-        const userIds = new Set<string>();
+    const json = JSON.stringify(payload);
+    let sentCount = 0;
 
-        wss.clients.forEach((client) => {
-            const ws = client as ChatWebSocket;
-            const isOpen = ws.readyState === WebSocket.OPEN;
-            const isSameRoom = ws.room_id === roomId;
+    wss.clients.forEach((client) => {
+      const chatClient = client as ChatWebSocket;
+      const isOpen = chatClient.readyState === WebSocket.OPEN;
+      const isSameRoom = chatClient.room_id === roomId;
 
-            if (isOpen && isSameRoom && ws.userId) {
-                userIds.add(ws.userId);
-            }
-        });
+      if (!isOpen || !isSameRoom) {
+        return;
+      }
 
-        return userIds.size;
+      chatClient.send(json);
+      sentCount += 1;
+    });
+
+    return sentCount;
+  }
+
+  function getConnectionCount(roomId: string): number {
+    if (!roomId) {
+      return 0;
     }
 
-    /**
-     * 특정 방에 접속한 클라이언트들에게 데이터를 전송합니다.
-     */
-    function broadcastToRoom(roomId: string, payload: ServerMessage): number {
-        if (!roomId) {
-            return 0;
-        }
+    let count = 0;
 
-        const json = JSON.stringify(payload);
-        let sentCount = 0;
+    wss.clients.forEach((client) => {
+      const chatClient = client as ChatWebSocket;
 
-        wss.clients.forEach((client) => {
-            const chatClient = client as ChatWebSocket;
-            const isOpen =
-                chatClient.readyState === WebSocket.OPEN;
+      if (
+        chatClient.readyState === WebSocket.OPEN &&
+        chatClient.room_id === roomId
+      ) {
+        count += 1;
+      }
+    });
 
-            const isSameRoom =
-                chatClient.room_id === roomId;
+    return count;
+  }
 
-            if (!isOpen || !isSameRoom) {
-                return;
-            }
-
-            chatClient.send(json);
-            sentCount += 1;
-        });
-
-        return sentCount;
+  function getClients(roomId: string): ChatWebSocket[] {
+    if (!roomId) {
+      return [];
     }
 
-    /**
-     * 특정 방에 접속한 WebSocket 연결 수를 반환합니다.
-     *
-     * 사용자 수가 아니라 연결 수입니다.
-     * 같은 사용자가 탭 두 개를 열면 2개로 계산됩니다.
-     */
-    function getConnectionCount(roomId: string): number {
-        if (!roomId) {
-            return 0;
-        }
+    return [...wss.clients].filter((client): client is ChatWebSocket => {
+      const chatClient = client as ChatWebSocket;
 
-        let count = 0;
+      return (
+        chatClient.readyState === WebSocket.OPEN &&
+        chatClient.room_id === roomId
+      );
+    });
+  }
 
-        wss.clients.forEach((client) => {
-            const chatClient = client as ChatWebSocket;
-            if (
-                chatClient.readyState === WebSocket.OPEN &&
-                chatClient.room_id === roomId
-            ) {
-                count += 1;
-            }
-        });
+  function getUserConnections(userId: string): ChatWebSocket[] {
+    return [...wss.clients].filter((client): client is ChatWebSocket => {
+      const chatClient = client as ChatWebSocket;
 
-        return count;
+      return (
+        chatClient.readyState === WebSocket.OPEN &&
+        chatClient.userId === userId
+      );
+    });
+  }
+
+  function sendToUser(userId: string, payload: ServerMessage): number {
+    const clients = getUserConnections(userId);
+    const json = JSON.stringify(payload);
+
+    clients.forEach((client) => {
+      client.send(json);
+    });
+
+    return clients.length;
+  }
+
+  function join(ws: ChatWebSocket, roomId: string): string {
+    if (!ws) {
+      throw new Error("WebSocket 연결이 필요합니다.");
     }
 
-    /**
-     * 특정 방에 접속한 WebSocket 연결 목록을 반환합니다.
-     *
-     * 원본 Set이 아니라 새로운 배열을 반환합니다.
-     */
-    function getClients(roomId: string): ChatWebSocket[] {
-        if (!roomId) {
-            return [];
-        }
-
-        return [...wss.clients].filter((client): client is ChatWebSocket => {
-            const chatClient = client as ChatWebSocket;
-            return (
-                chatClient.readyState === WebSocket.OPEN &&
-                chatClient.room_id === roomId
-            );
-        });
+    if (typeof roomId !== "string") {
+      throw new TypeError("roomId는 문자열이어야 합니다.");
     }
 
-    /**
-     * 특정 사용자의 열린 WebSocket 연결 목록을 반환합니다.
-     */
-    function getUserConnections(userId: string): ChatWebSocket[] {
-        return [...wss.clients].filter((client): client is ChatWebSocket => {
-            const chatClient = client as ChatWebSocket;
-            return (
-                chatClient.readyState === WebSocket.OPEN &&
-                chatClient.userId === userId
-            );
-        });
+    const normalizedRoomId = roomId.trim();
+
+    if (!normalizedRoomId) {
+      throw new Error("roomId는 비어 있을 수 없습니다.");
     }
 
-    function sendToUser(userId: string, payload: ServerMessage): number {
-        const clients = getUserConnections(userId);
-        const json = JSON.stringify(payload);
+    ws.room_id = normalizedRoomId;
 
-        clients.forEach((client) => {
-            client.send(json);
-        });
+    return normalizedRoomId;
+  }
 
-        return clients.length;
+  function leave(ws: ChatWebSocket | null | undefined): string | null {
+    if (!ws) {
+      return null;
     }
 
-    function join(ws: ChatWebSocket, roomId: string): string {
-        if (!ws) {
-            throw new Error("WebSocket 연결이 필요합니다.");
-        }
+    const previousRoomId = ws.room_id;
+    ws.room_id = null;
 
-        if (typeof roomId !== "string") {
-            throw new TypeError("roomId는 문자열이어야 합니다.");
-        }
+    return previousRoomId;
+  }
 
-        const normalizedRoomId = roomId.trim();
-
-        if (!normalizedRoomId) {
-            throw new Error("roomId는 비어 있을 수 없습니다.");
-        }
-
-        ws.room_id = normalizedRoomId;
-
-        return normalizedRoomId;
-    }
-
-    /**
-     * 현재 연결에서 방 정보를 제거합니다.
-     */
-    function leave(ws: ChatWebSocket | null | undefined): string | null {
-        if (!ws) {
-            return null;
-        }
-
-        const previousRoomId = ws.room_id;
-
-        ws.room_id = null;
-
-        return previousRoomId;
-    }
-
-    return {
-        join,
-        leave,
-        getClients,
-        getConnectionCount,
-        getUserCount,
-        getUserConnections,
-        sendToUser,
-        broadcastToRoom,
-    };
+  return {
+    join,
+    leave,
+    getClients,
+    getConnectionCount,
+    getUserCount,
+    getUserConnections,
+    sendToUser,
+    broadcastToRoom,
+  };
 }
 
 export default createRoomService;

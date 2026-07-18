@@ -4,7 +4,6 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <title>WebSocket 채팅</title>
 
     <style>
@@ -13,7 +12,7 @@
         }
 
         body {
-            max-width: 720px;
+            max-width: 760px;
             margin: 0 auto;
             padding: 24px;
             font-family:
@@ -22,6 +21,7 @@
                 "Segoe UI",
                 sans-serif;
             color: #222;
+            background: #fafafa;
         }
 
         h1,
@@ -29,11 +29,20 @@
             margin-top: 0;
         }
 
+        h1 {
+            font-size: 28px;
+        }
+
+        h2 {
+            font-size: 18px;
+        }
+
         .section {
-            margin-bottom: 24px;
+            margin-bottom: 18px;
             padding: 16px;
             border: 1px solid #ddd;
             border-radius: 8px;
+            background: #fff;
         }
 
         .field {
@@ -52,14 +61,21 @@
             border: 1px solid #ccc;
             border-radius: 6px;
             font-size: 14px;
+            background: #fff;
+        }
+
+        input:disabled {
+            background: #f3f3f3;
         }
 
         button {
+            min-height: 40px;
             padding: 10px 14px;
             border: 1px solid #bbb;
             border-radius: 6px;
             background: white;
             cursor: pointer;
+            font-weight: 600;
         }
 
         button:disabled {
@@ -69,6 +85,7 @@
 
         .button-group {
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
         }
 
@@ -101,6 +118,7 @@
             border: 1px solid #ddd;
             border-radius: 8px;
             list-style: none;
+            background: #fff;
         }
 
         #messages li {
@@ -141,6 +159,20 @@
         .message-form input {
             flex: 1;
         }
+
+        @media (max-width: 560px) {
+            body {
+                padding: 16px;
+            }
+
+            .message-form {
+                flex-direction: column;
+            }
+
+            .message-form button {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 
@@ -148,70 +180,49 @@
     <h1>WebSocket 채팅</h1>
 
     <section class="section">
-        <h2>1. 서버 연결</h2>
+        <h2>서버 연결</h2>
 
         <div class="button-group">
-            <button id="connectBtn" type="button">
-                WebSocket 연결
-            </button>
-
-            <button id="disconnectBtn" type="button" disabled>
-                연결 종료
-            </button>
+            <button id="connectBtn" type="button">WebSocket 연결</button>
+            <button id="disconnectBtn" type="button" disabled>연결 종료</button>
         </div>
 
-        <div id="connectionStatus" class="status">
-            연결되지 않음
-        </div>
+        <div id="connectionStatus" class="status">연결되지 않음</div>
     </section>
 
     <section class="section">
-        <h2>2. 채팅방 입장</h2>
+        <h2>방 입장</h2>
 
         <div class="field">
-            <label for="userIdInput">
-                사용자 ID
-            </label>
-
-            <input id="userIdInput" type="text" maxlength="50" placeholder="예: user-100" />
+            <label for="userIdInput">사용자 ID</label>
+            <input id="userIdInput" type="text" maxlength="50" placeholder="user-100" />
         </div>
 
         <div class="field">
-            <label for="nicknameInput">
-                닉네임
-            </label>
-
-            <input id="nicknameInput" type="text" maxlength="20" placeholder="닉네임을 입력하세요" />
+            <label for="passwordInput">비밀번호</label>
+            <input id="passwordInput" type="password" maxlength="100" placeholder="test1234" />
         </div>
 
         <div class="field">
-            <label for="roomInput">
-                방 ID
-            </label>
-
-            <input id="roomInput" type="text" maxlength="20" placeholder="예: room-1" />
+            <label for="roomInput">방 ID</label>
+            <input id="roomInput" type="text" maxlength="20" placeholder="room-1" />
         </div>
 
-        <button id="registerBtn" type="button" disabled>
-            채팅방 입장
-        </button>
+        <button id="registerBtn" type="button" disabled>채팅방 입장</button>
 
         <div id="roomInfo" class="room-info">
             <div>
                 사용자 ID:
                 <strong id="currentUserId">-</strong>
             </div>
-
             <div>
                 현재 방:
                 <strong id="currentRoom">-</strong>
             </div>
-
             <div>
                 닉네임:
                 <strong id="currentNickname">-</strong>
             </div>
-
             <div>
                 연결 수:
                 <strong id="roomConnectionCount">0</strong>
@@ -224,134 +235,55 @@
     </section>
 
     <section class="section">
-        <h2>3. 채팅</h2>
+        <h2>채팅</h2>
 
         <div class="history-actions">
-            <button id="loadPreviousBtn" type="button" disabled>
-                이전 메시지 불러오기
-            </button>
+            <button id="loadPreviousBtn" type="button" disabled>이전 메시지 불러오기</button>
         </div>
 
         <ul id="messages"></ul>
 
         <div class="message-form">
-            <input id="messageInput" type="text" maxlength="1000" placeholder="메시지를 입력하세요" disabled />
-
-            <button id="sendBtn" type="button" disabled>
-                전송
-            </button>
+            <input id="messageInput" type="text" maxlength="1000" placeholder="메시지를 입력하세요." disabled />
+            <button id="sendBtn" type="button" disabled>전송</button>
         </div>
     </section>
 
     <script>
         let socket = null;
-
+        let accessToken = null;
         let registeredUserId = null;
         let registeredNickname = null;
         let joinedRoomId = null;
-        let accessToken = null;
-
         let oldestMessageId = null;
         let isHistoryLoading = false;
         let hasMoreHistory = false;
 
-        const connectionStatus =
-            document.getElementById(
-                "connectionStatus",
-            );
-
-        const connectBtn =
-            document.getElementById(
-                "connectBtn",
-            );
-
-        const disconnectBtn =
-            document.getElementById(
-                "disconnectBtn",
-            );
-
-        const userIdInput =
-            document.getElementById(
-                "userIdInput",
-            );
-
-        const nicknameInput =
-            document.getElementById(
-                "nicknameInput",
-            );
-
-        const roomInput =
-            document.getElementById(
-                "roomInput",
-            );
-
-        const registerBtn =
-            document.getElementById(
-                "registerBtn",
-            );
-
-        const roomInfo =
-            document.getElementById(
-                "roomInfo",
-            );
-
-        const currentUserId =
-            document.getElementById(
-                "currentUserId",
-            );
-
-        const currentRoom =
-            document.getElementById(
-                "currentRoom",
-            );
-
-        const currentNickname =
-            document.getElementById(
-                "currentNickname",
-            );
-
-        const roomConnectionCount =
-            document.getElementById(
-                "roomConnectionCount",
-            );
-        const roomUserCount =
-            document.getElementById(
-                "roomUserCount",
-            );
-        const loadPreviousBtn =
-            document.getElementById(
-                "loadPreviousBtn",
-            );
-
-        const messages =
-            document.getElementById(
-                "messages",
-            );
-
-        const messageInput =
-            document.getElementById(
-                "messageInput",
-            );
-
-        const sendBtn =
-            document.getElementById(
-                "sendBtn",
-            );
+        const connectionStatus = document.getElementById("connectionStatus");
+        const connectBtn = document.getElementById("connectBtn");
+        const disconnectBtn = document.getElementById("disconnectBtn");
+        const userIdInput = document.getElementById("userIdInput");
+        const passwordInput = document.getElementById("passwordInput");
+        const roomInput = document.getElementById("roomInput");
+        const registerBtn = document.getElementById("registerBtn");
+        const roomInfo = document.getElementById("roomInfo");
+        const currentUserId = document.getElementById("currentUserId");
+        const currentRoom = document.getElementById("currentRoom");
+        const currentNickname = document.getElementById("currentNickname");
+        const roomConnectionCount = document.getElementById("roomConnectionCount");
+        const roomUserCount = document.getElementById("roomUserCount");
+        const loadPreviousBtn = document.getElementById("loadPreviousBtn");
+        const messages = document.getElementById("messages");
+        const messageInput = document.getElementById("messageInput");
+        const sendBtn = document.getElementById("sendBtn");
 
         function createWebSocketUrl() {
-            const protocol =
-                window.location.protocol === "https:"
-                    ? "wss:"
-                    : "ws:";
-
-            return (
-                `${protocol}//${window.location.host}`
-            );
+            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            return `${protocol}//${window.location.host}`;
         }
 
         function setConnectionStatus(text) {
-            connectionStatus.textContent =
-                text;
+            connectionStatus.textContent = text;
         }
 
         function formatTime(createdAt) {
@@ -359,444 +291,224 @@
                 return "";
             }
 
-            const date =
-                new Date(createdAt);
+            const date = new Date(createdAt);
 
-            if (
-                Number.isNaN(date.getTime())
-            ) {
+            if (Number.isNaN(date.getTime())) {
                 return createdAt;
             }
 
-            return date.toLocaleTimeString(
-                "ko-KR",
-                {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                },
-            );
+            return date.toLocaleTimeString("ko-KR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+            });
         }
 
-        function createMessageElement(
-            text,
-            className = "",
-            createdAt = null,
-        ) {
-            const li =
-                document.createElement("li");
+        function createMessageElement(text, className = "", createdAt = null) {
+            const li = document.createElement("li");
 
             if (className) {
                 li.className = className;
             }
 
-            const textElement =
-                document.createElement(
-                    "span",
-                );
-
-            textElement.className =
-                "message-text";
-
-            textElement.textContent =
-                text;
-
-            li.appendChild(
-                textElement,
-            );
+            const textElement = document.createElement("span");
+            textElement.className = "message-text";
+            textElement.textContent = text;
+            li.appendChild(textElement);
 
             if (createdAt) {
-                const timeElement =
-                    document.createElement(
-                        "span",
-                    );
-
-                timeElement.className =
-                    "time";
-
-                timeElement.textContent =
-                    formatTime(createdAt);
-
-                li.appendChild(
-                    timeElement,
-                );
+                const timeElement = document.createElement("span");
+                timeElement.className = "time";
+                timeElement.textContent = formatTime(createdAt);
+                li.appendChild(timeElement);
             }
 
             return li;
         }
 
-        function addMessage(
-            text,
-            className = "",
-            createdAt = null,
-        ) {
-            const li =
-                createMessageElement(
-                    text,
-                    className,
-                    createdAt,
-                );
+        function addMessage(text, className = "", createdAt = null) {
+            const li = createMessageElement(text, className, createdAt);
 
             messages.appendChild(li);
-
-            messages.scrollTop =
-                messages.scrollHeight;
+            messages.scrollTop = messages.scrollHeight;
         }
 
-        function prependChatMessages(
-            chatMessages,
-        ) {
-            if (
-                !Array.isArray(
-                    chatMessages,
-                ) ||
-                chatMessages.length === 0
-            ) {
+        function prependChatMessages(chatMessages) {
+            if (!Array.isArray(chatMessages) || chatMessages.length === 0) {
                 return;
             }
 
-            const previousScrollHeight =
-                messages.scrollHeight;
+            const previousScrollHeight = messages.scrollHeight;
+            const fragment = document.createDocumentFragment();
 
-            const fragment =
-                document.createDocumentFragment();
+            chatMessages.forEach((chatMessage) => {
+                const li = createMessageElement(
+                    `${chatMessage.nickname}: ${chatMessage.message}`,
+                    "",
+                    chatMessage.createdAt,
+                );
+                fragment.appendChild(li);
+            });
 
-            chatMessages.forEach(
-                (chatMessage) => {
-                    const li =
-                        createMessageElement(
-                            `${chatMessage.nickname}: ${chatMessage.message}`,
-                            "",
-                            chatMessage.createdAt,
-                        );
-
-                    fragment.appendChild(li);
-                },
-            );
-
-            messages.insertBefore(
-                fragment,
-                messages.firstChild,
-            );
-
-            const newScrollHeight =
-                messages.scrollHeight;
-
-            messages.scrollTop =
-                newScrollHeight -
-                previousScrollHeight;
+            messages.insertBefore(fragment, messages.firstChild);
+            messages.scrollTop = messages.scrollHeight - previousScrollHeight;
         }
 
-        function updateOldestMessageId(
-            chatMessages,
-        ) {
-            if (
-                !Array.isArray(
-                    chatMessages,
-                ) ||
-                chatMessages.length === 0
-            ) {
+        function updateOldestMessageId(chatMessages) {
+            if (!Array.isArray(chatMessages) || chatMessages.length === 0) {
                 return;
             }
 
-            const validIds =
-                chatMessages
-                    .map(
-                        (chatMessage) =>
-                            chatMessage.id,
-                    )
-                    .filter(
-                        (id) =>
-                            Number.isInteger(id),
-                    );
+            const validIds = chatMessages
+                .map((chatMessage) => chatMessage.id)
+                .filter((id) => Number.isInteger(id));
 
-            if (
-                validIds.length === 0
-            ) {
+            if (validIds.length === 0) {
                 return;
             }
 
-            const minimumId =
-                Math.min(...validIds);
+            const minimumId = Math.min(...validIds);
 
-            if (
-                oldestMessageId === null ||
-                minimumId <
-                oldestMessageId
-            ) {
-                oldestMessageId =
-                    minimumId;
+            if (oldestMessageId === null || minimumId < oldestMessageId) {
+                oldestMessageId = minimumId;
             }
         }
 
-        function updateRoomCounts(
-            connectionCount,
-            userCount,
-        ) {
-            if (
-                typeof connectionCount ===
-                "number"
-            ) {
-                roomConnectionCount.textContent =
-                    String(connectionCount);
+        function updateRoomCounts(connectionCount, userCount) {
+            if (typeof connectionCount === "number") {
+                roomConnectionCount.textContent = String(connectionCount);
             }
 
-            if (
-                typeof userCount ===
-                "number"
-            ) {
-                roomUserCount.textContent =
-                    String(userCount);
+            if (typeof userCount === "number") {
+                roomUserCount.textContent = String(userCount);
             }
         }
+
         function sendJson(payload) {
             if (!socket) {
-                addMessage(
-                    "WebSocket 연결이 없습니다.",
-                    "error",
-                );
-
+                addMessage("WebSocket 연결이 없습니다.", "error");
                 return false;
             }
 
-            if (
-                socket.readyState !==
-                WebSocket.OPEN
-            ) {
-                addMessage(
-                    "WebSocket이 열린 상태가 아닙니다.",
-                    "error",
-                );
-
+            if (socket.readyState !== WebSocket.OPEN) {
+                addMessage("WebSocket이 열린 상태가 아닙니다.", "error");
                 return false;
             }
 
-            socket.send(
-                JSON.stringify(payload),
-            );
-
+            socket.send(JSON.stringify(payload));
             return true;
         }
 
         function resetUi() {
+            accessToken = null;
             registeredUserId = null;
             registeredNickname = null;
             joinedRoomId = null;
-            accessToken = null;
-
             oldestMessageId = null;
             isHistoryLoading = false;
             hasMoreHistory = false;
 
             connectBtn.disabled = false;
             disconnectBtn.disabled = true;
-
             registerBtn.disabled = true;
-
             userIdInput.disabled = false;
-            nicknameInput.disabled = false;
+            passwordInput.disabled = false;
             roomInput.disabled = false;
-
             messageInput.disabled = true;
             sendBtn.disabled = true;
-
-            loadPreviousBtn.disabled =
-                true;
-
-            roomInfo.style.display =
-                "none";
-
-            currentUserId.textContent =
-                "-";
-
-            currentRoom.textContent =
-                "-";
-
-            currentNickname.textContent =
-                "-";
-
-            roomConnectionCount.textContent =
-                "0";
+            loadPreviousBtn.disabled = true;
+            roomInfo.style.display = "none";
+            currentUserId.textContent = "-";
+            currentRoom.textContent = "-";
+            currentNickname.textContent = "-";
+            roomConnectionCount.textContent = "0";
             roomUserCount.textContent = "0";
-            setConnectionStatus(
-                "연결되지 않음",
-            );
+            setConnectionStatus("연결되지 않음");
         }
 
         function connectWebSocket() {
             if (
                 socket &&
-                (
-                    socket.readyState ===
-                    WebSocket.OPEN ||
-                    socket.readyState ===
-                    WebSocket.CONNECTING
-                )
+                (socket.readyState === WebSocket.OPEN ||
+                    socket.readyState === WebSocket.CONNECTING)
             ) {
-                addMessage(
-                    "이미 연결 중이거나 연결된 상태입니다.",
-                    "system",
-                );
-
+                addMessage("이미 연결 중이거나 연결된 상태입니다.", "system");
                 return;
             }
 
-            const url =
-                createWebSocketUrl();
-
-            console.log(
-                "WebSocket 연결 주소:",
-                url,
-            );
-
-            socket =
-                new WebSocket(url);
-
+            const url = createWebSocketUrl();
+            socket = new WebSocket(url);
             connectBtn.disabled = true;
+            setConnectionStatus("연결 중...");
 
-            setConnectionStatus(
-                "연결 중...",
-            );
+            socket.addEventListener("open", () => {
+                setConnectionStatus("연결됨");
+                disconnectBtn.disabled = false;
+                registerBtn.disabled = false;
+            });
 
-            socket.addEventListener(
-                "open",
-                () => {
-                    console.log(
-                        "WebSocket 연결 성공",
-                    );
+            socket.addEventListener("message", (event) => {
+                handleServerMessage(event.data);
+            });
 
-                    setConnectionStatus(
-                        "연결됨",
-                    );
+            socket.addEventListener("close", (event) => {
+                addMessage(
+                    `WebSocket 연결이 종료되었습니다. (${event.code})`,
+                    "system",
+                );
+                socket = null;
+                resetUi();
+            });
 
-                    disconnectBtn.disabled =
-                        false;
-
-                    registerBtn.disabled =
-                        false;
-                },
-            );
-
-            socket.addEventListener(
-                "message",
-                (event) => {
-                    handleServerMessage(
-                        event.data,
-                    );
-                },
-            );
-
-            socket.addEventListener(
-                "close",
-                (event) => {
-                    console.log(
-                        "WebSocket 연결 종료:",
-                        event.code,
-                        event.reason,
-                    );
-
-                    addMessage(
-                        "WebSocket 연결이 종료되었습니다.",
-                        "system",
-                    );
-
-                    socket = null;
-
-                    resetUi();
-                },
-            );
-
-            socket.addEventListener(
-                "error",
-                (error) => {
-                    console.error(
-                        "WebSocket 오류:",
-                        error,
-                    );
-
-                    addMessage(
-                        "WebSocket 오류가 발생했습니다.",
-                        "error",
-                    );
-                },
-            );
+            socket.addEventListener("error", () => {
+                addMessage("WebSocket 오류가 발생했습니다.", "error");
+            });
         }
 
-        async function requestAccessToken(
-            userId,
-            nickname,
-        ) {
-            const response =
-                await fetch(
-                    "/auth/login",
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type":
-                                "application/json",
-                        },
-                        body: JSON.stringify({
-                            userId,
-                            nickname,
-                        }),
-                    },
-                );
+        async function requestAccessToken(userId, password) {
+            const response = await fetch("/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    userId,
+                    password,
+                }),
+            });
 
-            const data =
-                await response.json();
+            const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(
-                    data.message ||
-                    "로그인에 실패했습니다.",
-                );
+                throw new Error(data.message || "로그인에 실패했습니다.");
             }
 
-            if (!data.token) {
-                throw new Error(
-                    "인증 토큰을 발급받지 못했습니다.",
-                );
+            if (!data.accessToken || !data.user) {
+                throw new Error("인증 토큰을 발급받지 못했습니다.");
             }
 
-            return data.token;
+            return data;
         }
 
         async function registerUser() {
-            const userId =
-                userIdInput.value.trim();
-
-            const nickname =
-                nicknameInput.value.trim();
-
-            const roomId =
-                roomInput.value.trim();
+            const userId = userIdInput.value.trim();
+            const password = passwordInput.value;
+            const roomId = roomInput.value.trim();
 
             if (!userId) {
-                addMessage(
-                    "사용자 ID를 입력하세요.",
-                    "error",
-                );
-
+                addMessage("사용자 ID를 입력하세요.", "error");
                 userIdInput.focus();
                 return;
             }
 
-            if (!nickname) {
-                addMessage(
-                    "닉네임을 입력하세요.",
-                    "error",
-                );
-
-                nicknameInput.focus();
+            if (!password) {
+                addMessage("비밀번호를 입력하세요.", "error");
+                passwordInput.focus();
                 return;
             }
 
             if (!roomId) {
-                addMessage(
-                    "방 ID를 입력하세요.",
-                    "error",
-                );
-
+                addMessage("방 ID를 입력하세요.", "error");
                 roomInput.focus();
                 return;
             }
@@ -804,66 +516,51 @@
             registerBtn.disabled = true;
 
             try {
-                accessToken =
-                    await requestAccessToken(
-                        userId,
-                        nickname,
-                    );
+                const loginResult = await requestAccessToken(userId, password);
 
-                const isSent =
-                    sendJson({
-                        type: "register",
-                        token: accessToken,
-                        nickname,
-                        room_id: roomId,
-                    });
+                accessToken = loginResult.accessToken;
+                registeredUserId = loginResult.user.userId;
+                registeredNickname = loginResult.user.nickname;
+
+                const isSent = sendJson({
+                    type: "register",
+                    token: accessToken,
+                    nickname: registeredNickname,
+                    room_id: roomId,
+                });
 
                 if (!isSent) {
-                    registerBtn.disabled =
-                        false;
+                    registerBtn.disabled = false;
                 }
             } catch (error) {
                 accessToken = null;
-
+                registeredUserId = null;
+                registeredNickname = null;
                 addMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "로그인에 실패했습니다.",
+                    error instanceof Error ? error.message : "로그인에 실패했습니다.",
                     "error",
                 );
-
-                registerBtn.disabled =
-                    false;
+                registerBtn.disabled = false;
             }
         }
 
         function sendChatMessage() {
             if (!joinedRoomId) {
-                addMessage(
-                    "먼저 채팅방에 입장하세요.",
-                    "error",
-                );
-
+                addMessage("먼저 채팅방에 입장하세요.", "error");
                 return;
             }
 
-            const message =
-                messageInput.value.trim();
+            const message = messageInput.value.trim();
 
             if (!message) {
-                addMessage(
-                    "메시지를 입력하세요.",
-                    "error",
-                );
-
+                addMessage("메시지를 입력하세요.", "error");
                 return;
             }
 
-            const isSent =
-                sendJson({
-                    type: "chat",
-                    message,
-                });
+            const isSent = sendJson({
+                type: "chat",
+                message,
+            });
 
             if (isSent) {
                 messageInput.value = "";
@@ -873,22 +570,12 @@
 
         function requestPreviousHistory() {
             if (!joinedRoomId) {
-                addMessage(
-                    "먼저 채팅방에 입장하세요.",
-                    "error",
-                );
-
+                addMessage("먼저 채팅방에 입장하세요.", "error");
                 return;
             }
 
-            if (
-                oldestMessageId === null
-            ) {
-                addMessage(
-                    "기준이 되는 메시지가 없습니다.",
-                    "system",
-                );
-
+            if (oldestMessageId === null) {
+                addMessage("기준이 되는 메시지가 없습니다.", "system");
                 return;
             }
 
@@ -897,348 +584,148 @@
             }
 
             if (!hasMoreHistory) {
-                addMessage(
-                    "더 이상 이전 메시지가 없습니다.",
-                    "system",
-                );
-
+                addMessage("더 이상 이전 메시지가 없습니다.", "system");
                 return;
             }
 
             isHistoryLoading = true;
+            loadPreviousBtn.disabled = true;
 
-            loadPreviousBtn.disabled =
-                true;
-
-            const isSent =
-                sendJson({
-                    type:
-                        "history-request",
-                    before_id:
-                        oldestMessageId,
-                    limit: 30,
-                });
+            const isSent = sendJson({
+                type: "history-request",
+                before_id: oldestMessageId,
+                limit: 30,
+            });
 
             if (!isSent) {
                 isHistoryLoading = false;
-
-                loadPreviousBtn.disabled =
-                    !hasMoreHistory;
+                loadPreviousBtn.disabled = !hasMoreHistory;
             }
         }
 
-        function handleServerMessage(
-            rawData,
-        ) {
-            console.log(
-                "서버에서 받은 원본 데이터:",
-                rawData,
-            );
-
+        function handleServerMessage(rawData) {
             let data;
 
             try {
-                data =
-                    JSON.parse(rawData);
-            } catch (error) {
-                console.error(
-                    "서버 응답 JSON 변환 실패:",
-                    error,
-                );
-
-                addMessage(
-                    "서버 응답을 해석할 수 없습니다.",
-                    "error",
-                );
-
+                data = JSON.parse(rawData);
+            } catch {
+                addMessage("서버 응답을 해석할 수 없습니다.", "error");
                 return;
             }
 
-            console.log(
-                "서버 응답 객체:",
-                data,
-            );
-
-            if (
-                data.type ===
-                "connection"
-            ) {
-                addMessage(
-                    data.message,
-                    "system",
-                    data.createdAt,
-                );
-
+            if (data.type === "connection") {
+                addMessage(data.message, "system", data.createdAt);
                 return;
             }
 
-            if (
-                data.type ===
-                "register-success"
-            ) {
-                registeredUserId =
-                    data.userId;
-
-                registeredNickname =
-                    data.nickname;
-
-                joinedRoomId =
-                    data.room_id;
-
+            if (data.type === "register-success") {
+                registeredUserId = data.userId;
+                registeredNickname = data.nickname;
+                joinedRoomId = data.room_id;
                 oldestMessageId = null;
                 isHistoryLoading = false;
                 hasMoreHistory = false;
 
-                userIdInput.disabled =
-                    true;
-
-                nicknameInput.disabled =
-                    true;
-
-                roomInput.disabled =
-                    true;
-
-                registerBtn.disabled =
-                    true;
-
-                messageInput.disabled =
-                    false;
-
-                sendBtn.disabled =
-                    false;
-
-                loadPreviousBtn.disabled =
-                    true;
-
-                currentUserId.textContent =
-                    registeredUserId;
-
-                currentRoom.textContent =
-                    joinedRoomId;
-
-                currentNickname.textContent =
-                    registeredNickname;
-
-                updateRoomConnectionCount(
-                    data.roomConnectionCount,
-                );
-                updateRoomCounts(
-                    data.roomConnectionCount,
-                    data.roomUserCount,
-                );
-                roomInfo.style.display =
-                    "block";
-
-                addMessage(
-                    data.message,
-                    "system",
-                    data.createdAt,
-                );
-
+                userIdInput.disabled = true;
+                passwordInput.disabled = true;
+                roomInput.disabled = true;
+                registerBtn.disabled = true;
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                loadPreviousBtn.disabled = true;
+                currentUserId.textContent = registeredUserId;
+                currentRoom.textContent = joinedRoomId;
+                currentNickname.textContent = registeredNickname;
+                updateRoomCounts(data.roomConnectionCount, data.roomUserCount);
+                roomInfo.style.display = "block";
+                addMessage(data.message, "system", data.createdAt);
                 messageInput.focus();
-
                 return;
             }
 
-            if (
-                data.type === "history"
-            ) {
-                const chatMessages =
-                    Array.isArray(
-                        data.messages,
-                    )
-                        ? data.messages
-                        : [];
+            if (data.type === "history") {
+                const chatMessages = Array.isArray(data.messages) ? data.messages : [];
 
-                updateOldestMessageId(
-                    chatMessages,
-                );
+                updateOldestMessageId(chatMessages);
+                hasMoreHistory = data.hasMore === true;
 
-                hasMoreHistory =
-                    data.hasMore === true;
-
-                if (
-                    isHistoryLoading
-                ) {
-                    prependChatMessages(
-                        chatMessages,
-                    );
+                if (isHistoryLoading) {
+                    prependChatMessages(chatMessages);
                 } else {
-                    chatMessages.forEach(
-                        (
-                            chatMessage,
-                        ) => {
-                            addMessage(
-                                `${chatMessage.nickname}: ${chatMessage.message}`,
-                                "",
-                                chatMessage.createdAt,
-                            );
-                        },
-                    );
+                    chatMessages.forEach((chatMessage) => {
+                        addMessage(
+                            `${chatMessage.nickname}: ${chatMessage.message}`,
+                            "",
+                            chatMessage.createdAt,
+                        );
+                    });
                 }
 
                 isHistoryLoading = false;
-
-                loadPreviousBtn.disabled =
-                    !hasMoreHistory;
-
+                loadPreviousBtn.disabled = !hasMoreHistory;
                 return;
             }
 
-            if (
-                data.type === "chat"
-            ) {
-                addMessage(
-                    `${data.nickname}: ${data.message}`,
-                    "",
-                    data.createdAt,
-                );
+            if (data.type === "chat") {
+                addMessage(`${data.nickname}: ${data.message}`, "", data.createdAt);
 
-                if (
-                    oldestMessageId ===
-                    null &&
-                    Number.isInteger(
-                        data.id,
-                    )
-                ) {
-                    oldestMessageId =
-                        data.id;
+                if (oldestMessageId === null && Number.isInteger(data.id)) {
+                    oldestMessageId = data.id;
                 }
 
                 return;
             }
 
-            if (
-                data.type ===
-                "notification"
-            ) {
-                updateRoomCounts(
-                    data.roomConnectionCount,
-                    data.roomUserCount,
-                );
-
-                addMessage(
-                    data.message,
-                    "system",
-                    data.createdAt,
-                );
-
+            if (data.type === "notification") {
+                updateRoomCounts(data.roomConnectionCount, data.roomUserCount);
+                addMessage(data.message, "system", data.createdAt);
                 return;
             }
 
-            if (
-                data.type === "error"
-            ) {
-                const errorText =
-                    data.code
-                        ? `[${data.code}] ${data.message}`
-                        : data.message;
+            if (data.type === "error") {
+                const errorText = data.code
+                    ? `[${data.code}] ${data.message}`
+                    : data.message;
 
-                addMessage(
-                    errorText,
-                    "error",
-                    data.createdAt,
-                );
+                addMessage(errorText, "error", data.createdAt);
 
-                if (
-                    isHistoryLoading
-                ) {
-                    isHistoryLoading =
-                        false;
-
-                    loadPreviousBtn.disabled =
-                        !hasMoreHistory;
+                if (isHistoryLoading) {
+                    isHistoryLoading = false;
+                    loadPreviousBtn.disabled = !hasMoreHistory;
                 }
-
-                return;
             }
-
-            console.warn(
-                "알 수 없는 메시지 타입:",
-                data,
-            );
         }
 
-        connectBtn.addEventListener(
-            "click",
-            connectWebSocket,
-        );
-
-        disconnectBtn.addEventListener(
-            "click",
-            () => {
-                if (!socket) {
-                    return;
-                }
-
-                socket.close(
-                    1000,
-                    "Client disconnect",
-                );
-            },
-        );
-
-        registerBtn.addEventListener(
-            "click",
-            registerUser,
-        );
-
-        sendBtn.addEventListener(
-            "click",
-            sendChatMessage,
-        );
-
-        loadPreviousBtn.addEventListener(
-            "click",
-            requestPreviousHistory,
-        );
-
-        messageInput.addEventListener(
-            "keydown",
-            (event) => {
-                if (
-                    event.key === "Enter" &&
-                    !event.isComposing
-                ) {
-                    event.preventDefault();
-
-                    sendChatMessage();
-                }
-            },
-        );
-
-        userIdInput.addEventListener(
-            "keydown",
-            (event) => {
-                if (
-                    event.key === "Enter"
-                ) {
-                    nicknameInput.focus();
-                }
-            },
-        );
-
-        nicknameInput.addEventListener(
-            "keydown",
-            (event) => {
-                if (
-                    event.key === "Enter"
-                ) {
-                    roomInput.focus();
-                }
-            },
-        );
-
-        roomInput.addEventListener(
-            "keydown",
-            (event) => {
-                if (
-                    event.key === "Enter"
-                ) {
-                    registerUser();
-                }
-            },
-        );
+        connectBtn.addEventListener("click", connectWebSocket);
+        disconnectBtn.addEventListener("click", () => {
+            if (socket) {
+                socket.close(1000, "Client disconnect");
+            }
+        });
+        registerBtn.addEventListener("click", registerUser);
+        sendBtn.addEventListener("click", sendChatMessage);
+        loadPreviousBtn.addEventListener("click", requestPreviousHistory);
+        messageInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.isComposing) {
+                event.preventDefault();
+                sendChatMessage();
+            }
+        });
+        userIdInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                passwordInput.focus();
+            }
+        });
+        passwordInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                roomInput.focus();
+            }
+        });
+        roomInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                registerUser();
+            }
+        });
 
         resetUi();
     </script>

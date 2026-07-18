@@ -109,6 +109,29 @@ describe("message handlers", () => {
         expect(context.sendRoomHistory).toHaveBeenCalledWith(socket, "room-1");
     });
 
+    it("uses the authenticated token nickname instead of a client-supplied nickname", async () => {
+        const context = createContext();
+        const socket = createSocket();
+
+        await expect(registerHandler.handle(socket, {
+            type: "register",
+            token: createTestToken("user-1", "trusted-name"),
+            nickname: "spoofed-name",
+            room_id: "room-1",
+        }, context)).resolves.toBe(true);
+
+        expect(socket.nickname).toBe("trusted-name");
+        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
+            nickname: "trusted-name",
+        }));
+        expect(context.roomService.broadcastToRoom).toHaveBeenCalledWith(
+            "room-1",
+            expect.objectContaining({
+                message: "trusted-name님이 입장했습니다.",
+            }),
+        );
+    });
+
     it("returns an invalid token error for malformed tokens", async () => {
         const context = createContext();
         const socket = createSocket();

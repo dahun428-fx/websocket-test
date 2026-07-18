@@ -50,7 +50,7 @@ function waitForServer(serverProcess) {
         serverProcess.once("exit", (code) => {
             reject(
                 new Error(
-                    `검사 서버가 준비되기 전에 종료되었습니다. (code=${code})\n${output}`,
+                    `검사용 서버가 준비되기 전에 종료되었습니다. (code=${code})\n${output}`,
                 ),
             );
         });
@@ -147,9 +147,9 @@ async function main() {
             throw new Error("무응답 클라이언트가 서버 ping을 받지 못했습니다.");
         }
 
-        console.log(`✓ 서버 heartbeat 주기: ${HEARTBEAT_INTERVAL_MS}ms`);
-        console.log("✓ 정상 클라이언트: ping 수신 → 자동 pong → 연결 유지");
-        console.log("✓ 무응답 클라이언트: ping 수신 → pong 없음 → 서버가 연결 종료");
+        console.log(`서버 heartbeat 주기: ${HEARTBEAT_INTERVAL_MS}ms`);
+        console.log("정상 클라이언트는 ping 수신 후 자동 pong으로 연결 유지");
+        console.log("무응답 클라이언트는 ping 수신 후 pong 없음으로 서버가 연결 종료");
     } finally {
         if (healthyClient?.readyState === WebSocket.OPEN) {
             healthyClient.close();

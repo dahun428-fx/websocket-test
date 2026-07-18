@@ -1,406 +1,434 @@
 import "dotenv/config";
 
-import http, { IncomingMessage, ServerResponse } from "http";
-import fs from "fs";
-import path from "path";
+import { promises as fs } from "node:fs";
+import http, { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 import WebSocket, { RawData, WebSocketServer } from "ws";
 
-import { messageRepository } from "./repositories/messageRepository";
-import createRoomService from "./service/roomService";
-import type { ChatWebSocket } from "./types/websocket";
-import type {
-    ServerMessage,
-} from "./types/messages";
-import type { MessageHandlerContext } from "./types/handler";
-import { parseClientMessage } from "./parser/messageParser";
-import { dispatchMessage } from "./dispatcher/messageDispatcher";
-import { enqueueMessage } from "./queue/messageQueue";
-import { ERROR_MESSAGES } from "./errors/errorMessages";
-import type { ErrorCode } from "./errors/errorMessages";
 import { createAccessToken } from "./auth/tokenService";
 import { closeDatabase, initializeDatabase } from "./database/database";
+import { ERROR_MESSAGES } from "./errors/errorMessages";
+import type { ErrorCode } from "./errors/errorMessages";
+import { dispatchMessage } from "./dispatcher/messageDispatcher";
 import {
-    logHeartbeat,
-    resolveHeartbeatIntervalMs,
-    startHeartbeat,
+  logHeartbeat,
+  resolveHeartbeatIntervalMs,
+  startHeartbeat,
 } from "./heartbeat/heartbeat";
+import { parseClientMessage } from "./parser/messageParser";
+import { enqueueMessage } from "./queue/messageQueue";
+import { messageRepository } from "./repositories/messageRepository";
+import { userRepository } from "./repositories/userRepository";
+import { loginRequestSchema } from "./schemas/loginSchema";
+import createRoomService from "./service/roomService";
+import type { MessageHandlerContext } from "./types/handler";
+import type { ServerMessage } from "./types/messages";
+import type { ChatWebSocket } from "./types/websocket";
 
 const PORT = Number(process.env.PORT) || 3010;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const HEARTBEAT_INTERVAL_MS = resolveHeartbeatIntervalMs(
-    process.env.HEARTBEAT_INTERVAL_MS,
+  process.env.HEARTBEAT_INTERVAL_MS,
 );
 
 let isShuttingDown = false;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 
-interface LoginRequestBody {
-    userId?: unknown;
-    nickname?: unknown;
-}
-
 function sendHttpJson(
-    res: ServerResponse,
-    statusCode: number,
-    payload: unknown,
+  res: ServerResponse,
+  statusCode: number,
+  payload: unknown,
 ): void {
-    res.writeHead(statusCode, {
-        "Content-Type": "application/json; charset=utf-8",
-    });
-    res.end(JSON.stringify(payload));
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  res.end(JSON.stringify(payload));
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
-    return new Promise((resolve, reject) => {
-        let body = "";
+  return new Promise((resolve, reject) => {
+    let body = "";
 
-        req.setEncoding("utf8");
-        req.on("data", (chunk: string) => {
-            body += chunk;
-        });
-        req.on("end", () => resolve(body));
-        req.on("error", reject);
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => {
+      body += chunk;
     });
-}
-
-function parseLoginRequestBody(rawBody: string): LoginRequestBody | null {
-    try {
-        return JSON.parse(rawBody) as LoginRequestBody;
-    } catch {
-        return null;
-    }
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
 }
 
 async function handleLoginRequest(
-    req: IncomingMessage,
-    res: ServerResponse,
+  req: IncomingMessage,
+  res: ServerResponse,
 ): Promise<void> {
-    if (req.method !== "POST") {
-        sendHttpJson(res, 405, {
-            message: "POST 요청만 허용됩니다.",
-        });
-        return;
-    }
+  let rawBody: string;
 
-    const rawBody = await readRequestBody(req);
-    const body = parseLoginRequestBody(rawBody);
-
-    if (!body) {
-        sendHttpJson(res, 400, {
-            message: "요청 본문을 해석할 수 없습니다.",
-        });
-        return;
-    }
-
-    const userId =
-        typeof body.userId === "string"
-            ? body.userId.trim()
-            : "";
-    const nickname =
-        typeof body.nickname === "string"
-            ? body.nickname.trim()
-            : "";
-
-    if (!userId) {
-        sendHttpJson(res, 400, {
-            message: "사용자 ID를 입력하세요.",
-        });
-        return;
-    }
-
-    if (!nickname) {
-        sendHttpJson(res, 400, {
-            message: "닉네임을 입력하세요.",
-        });
-        return;
-    }
-
-    if (userId.length > 50) {
-        sendHttpJson(res, 400, {
-            message: "사용자 ID는 50자 이하로 입력하세요.",
-        });
-        return;
-    }
-
-    if (nickname.length > 20) {
-        sendHttpJson(res, 400, {
-            message: "닉네임은 20자 이하로 입력하세요.",
-        });
-        return;
-    }
-
-    const token = createAccessToken(
-        userId,
-        nickname,
-    );
-
-    sendHttpJson(res, 200, {
-        token,
-        userId,
-        nickname,
+  try {
+    rawBody = await readRequestBody(req);
+  } catch {
+    sendHttpJson(res, 400, {
+      message: "요청 본문을 읽을 수 없습니다.",
     });
+    return;
+  }
+
+  let body: unknown;
+
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    sendHttpJson(res, 400, {
+      message: "올바른 JSON 형식이 아닙니다.",
+    });
+    return;
+  }
+
+  const parseResult = loginRequestSchema.safeParse(body);
+
+  if (!parseResult.success) {
+    sendHttpJson(res, 400, {
+      message:
+        parseResult.error.issues[0]?.message ??
+        "올바르지 않은 로그인 요청입니다.",
+    });
+    return;
+  }
+
+  const { userId, password } = parseResult.data;
+  const user = await userRepository.authenticate(userId, password);
+
+  if (!user) {
+    sendHttpJson(res, 401, {
+      message: "사용자 ID 또는 비밀번호가 올바르지 않습니다.",
+    });
+    return;
+  }
+
+  const accessToken = createAccessToken(user.id, user.nickname);
+
+  sendHttpJson(res, 200, {
+    accessToken,
+    user: {
+      userId: user.id,
+      nickname: user.nickname,
+    },
+  });
 }
 
-const server = http.createServer(
-    (req: IncomingMessage, res: ServerResponse) => {
-        const requestUrl = new URL(
-            req.url ?? "/",
-            `http://${req.headers.host ?? "localhost"}`,
-        );
+async function serveIndex(res: ServerResponse): Promise<void> {
+  const filePath = path.join(__dirname, "..", "public", "index.html");
 
-        if (requestUrl.pathname === "/auth/login") {
-            void handleLoginRequest(req, res).catch((error) => {
-                console.error("로그인 요청 처리 실패:", error);
-                sendHttpJson(res, 500, {
-                    message: "서버 내부 오류가 발생했습니다.",
-                });
-            });
-            return;
-        }
+  try {
+    const data = await fs.readFile(filePath);
 
-        const filePath = path.join(__dirname, "..", "public", "index.html");
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(data);
+  } catch (error) {
+    console.error("index.html 읽기 실패:", error);
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Server Error");
+  }
+}
 
-        fs.readFile(filePath, (error, data) => {
-            if (error) {
-                console.error("index.html 읽기 실패:", error);
-                res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-                res.end("Server Error");
-                return;
-            }
+async function handleHttpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const requestUrl = new URL(
+    req.url ?? "/",
+    `http://${req.headers.host ?? "localhost"}`,
+  );
 
-            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-            res.end(data);
-        });
-    },
-);
+  if (requestUrl.pathname === "/login") {
+    if (req.method !== "POST") {
+      sendHttpJson(res, 405, {
+        message: "POST 요청만 허용됩니다.",
+      });
+      return;
+    }
+
+    await handleLoginRequest(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/") {
+    await serveIndex(res);
+    return;
+  }
+
+  sendHttpJson(res, 404, {
+    message: "요청한 경로를 찾을 수 없습니다.",
+  });
+}
+
+const server = http.createServer((req, res) => {
+  void handleHttpRequest(req, res).catch((error) => {
+    console.error("HTTP 요청 처리 오류:", error);
+
+    if (!res.headersSent) {
+      sendHttpJson(res, 500, {
+        message: "서버 내부 오류가 발생했습니다.",
+      });
+      return;
+    }
+
+    res.destroy(error instanceof Error ? error : undefined);
+  });
+});
 
 const wss = new WebSocketServer({ server });
 const roomService = createRoomService(wss);
-function sendJson(ws: ChatWebSocket, payload: ServerMessage): Promise<void> {
-    return new Promise((resolve, reject) => {
-        if (ws.readyState !== WebSocket.OPEN) {
-            reject(new Error("WebSocket이 열린 상태가 아니므로 메시지를 전송할 수 없습니다."));
-            return;
-        }
 
-        ws.send(JSON.stringify(payload), (error) => {
-            if (error) {
-                reject(error);
-                return;
-            }
-            resolve();
-        });
+function sendJson(ws: ChatWebSocket, payload: ServerMessage): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (ws.readyState !== WebSocket.OPEN) {
+      reject(
+        new Error(
+          "WebSocket이 열린 상태가 아니므로 메시지를 전송할 수 없습니다.",
+        ),
+      );
+      return;
+    }
+
+    ws.send(JSON.stringify(payload), (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
     });
+  });
 }
 
 function createTimestamp(): string {
-    return new Date().toISOString();
+  return new Date().toISOString();
 }
 
 function sendError(ws: ChatWebSocket, code: ErrorCode): Promise<void> {
-    return sendJson(ws, {
-        type: "error",
-        code,
-        message: ERROR_MESSAGES[code],
-        createdAt: createTimestamp(),
-    });
+  return sendJson(ws, {
+    type: "error",
+    code,
+    message: ERROR_MESSAGES[code],
+    createdAt: createTimestamp(),
+  });
 }
 
 async function sendErrorSafely(
-    ws: ChatWebSocket,
-    code: ErrorCode,
+  ws: ChatWebSocket,
+  code: ErrorCode,
 ): Promise<void> {
-    try {
-        await sendError(ws, code);
-    } catch (error) {
-        console.error("오류 응답 전송 실패:", error);
-    }
+  try {
+    await sendError(ws, code);
+  } catch (error) {
+    console.error("오류 응답 전송 실패:", error);
+  }
 }
 
-async function sendRoomHistory(ws: ChatWebSocket, roomId: string): Promise<void> {
-    const historyPage = await messageRepository.get(roomId);
-    const { messages, hasMore, nextBeforeId } = historyPage;
-    return sendJson(ws, {
-        type: "history",
-        room_id: roomId,
-        messages,
-        hasMore,
-        nextBeforeId,
-        createdAt: createTimestamp(),
-    });
+async function sendRoomHistory(
+  ws: ChatWebSocket,
+  roomId: string,
+): Promise<void> {
+  const historyPage = await messageRepository.get(roomId);
+  const { messages, hasMore, nextBeforeId } = historyPage;
+
+  return sendJson(ws, {
+    type: "history",
+    room_id: roomId,
+    messages,
+    hasMore,
+    nextBeforeId,
+    createdAt: createTimestamp(),
+  });
 }
 
 const messageHandlerContext: MessageHandlerContext = {
-    roomService,
-    messageRepository,
-    sendJson,
-    sendError,
-    sendRoomHistory,
-    createTimestamp,
+  roomService,
+  messageRepository,
+  sendJson,
+  sendError,
+  sendRoomHistory,
+  createTimestamp,
 };
 
-async function handleMessage(ws: ChatWebSocket, rawMessage: RawData): Promise<void> {
-    const data = parseClientMessage(rawMessage);
-    if (!data) {
-        await sendErrorSafely(ws, "MESSAGE_PARSE_FAILED");
-        return;
-    }
-    try {
-        await dispatchMessage(ws, data, messageHandlerContext);
-    } catch (error) {
-        console.error("메시지 처리 중 오류 발생:", error);
-        await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
-    }
+async function handleMessage(
+  ws: ChatWebSocket,
+  rawMessage: RawData,
+): Promise<void> {
+  const data = parseClientMessage(rawMessage);
+
+  if (!data) {
+    await sendErrorSafely(ws, "MESSAGE_PARSE_FAILED");
+    return;
+  }
+
+  try {
+    await dispatchMessage(ws, data, messageHandlerContext);
+  } catch (error) {
+    console.error("메시지 처리 중 오류 발생:", error);
+    await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
+  }
 }
 
 function handleClose(ws: ChatWebSocket): void {
-    ws.isClosed = true;
+  ws.isClosed = true;
 
-    const nickname = ws.nickname;
-    const roomId = ws.room_id;
+  const nickname = ws.nickname;
+  const roomId = ws.room_id;
 
-    roomService.leave(ws);
+  roomService.leave(ws);
 
-    console.log("클라이언트 연결 종료");
-    console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
+  console.log("클라이언트 연결 종료");
+  console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
 
-    if (!nickname || !roomId) return;
+  if (!nickname || !roomId) {
+    return;
+  }
 
-    const roomConnectionCount = roomService.getConnectionCount(roomId);
-    const roomUserCount = roomService.getUserCount(roomId);
+  const roomConnectionCount = roomService.getConnectionCount(roomId);
+  const roomUserCount = roomService.getUserCount(roomId);
 
-    console.log(`${roomId}방 연결 수:`, roomConnectionCount);
-    roomService.broadcastToRoom(roomId, {
-        type: "notification",
-        room_id: roomId,
-        message: `${nickname}님이 퇴장했습니다.`,
-        roomConnectionCount,
-        roomUserCount,
-        createdAt: createTimestamp(),
-    });
+  console.log(`${roomId}방 연결 수:`, roomConnectionCount);
+  roomService.broadcastToRoom(roomId, {
+    type: "notification",
+    room_id: roomId,
+    message: `${nickname}님이 퇴장했습니다.`,
+    roomConnectionCount,
+    roomUserCount,
+    createdAt: createTimestamp(),
+  });
 }
 
 wss.on("connection", (connection) => {
-    const ws = connection as ChatWebSocket;
-    ws.userId = null;
-    ws.nickname = null;
-    ws.room_id = null;
-    ws.messageQueue = Promise.resolve();
-    ws.isClosed = false;
+  const ws = connection as ChatWebSocket;
+
+  ws.userId = null;
+  ws.nickname = null;
+  ws.room_id = null;
+  ws.messageQueue = Promise.resolve();
+  ws.isClosed = false;
+  ws.isAlive = true;
+
+  console.log("새로운 클라이언트 연결");
+  console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
+
+  void sendJson(ws, {
+    type: "connection",
+    message: "서버에 연결되었습니다.",
+    createdAt: createTimestamp(),
+  }).catch((error) => {
+    console.error("연결 안내 메시지 전송 실패:", error);
+  });
+
+  ws.on("message", (rawMessage) => {
+    enqueueMessage(
+      ws,
+      () => handleMessage(ws, rawMessage),
+      async (error) => {
+        console.error("메시지 queue 처리 실패:", error);
+        await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
+      },
+    );
+  });
+
+  ws.on("pong", () => {
     ws.isAlive = true;
-    console.log("새로운 클라이언트 연결");
-    console.log("현재 전체 WebSocket 연결 수:", wss.clients.size);
-    void sendJson(ws, {
-        type: "connection",
-        message: "서버에 연결되었습니다.",
-        createdAt: createTimestamp(),
-    }).catch((error) => {
-        console.error("연결 안내 메시지 전송 실패:", error);
-    });
-    ws.on("message", (rawMessage) => {
-        enqueueMessage(ws, () => handleMessage(ws, rawMessage), async (error) => {
-            console.error("메시지 queue 처리 실패:", error);
-            await sendErrorSafely(ws, "INTERNAL_SERVER_ERROR");
-        });
-    });
+    logHeartbeat("pong", ws);
+  });
 
-    ws.on("pong", () => {
-        ws.isAlive = true;
-        logHeartbeat("pong", ws);
-    });
-
-    ws.on("close", () => handleClose(ws));
-    ws.on("error", (error) => console.error("WebSocket 연결 에러:", error));
+  ws.on("close", () => handleClose(ws));
+  ws.on("error", (error) => console.error("WebSocket 연결 에러:", error));
 });
 
 async function startServer(): Promise<void> {
-    try {
-        await initializeDatabase();
+  try {
+    await initializeDatabase();
 
-        await new Promise<void>((resolve, reject) => {
-            server.once("error", reject);
-            server.listen(PORT, () => {
-                server.off("error", reject);
-                heartbeatTimer = startHeartbeat(wss, HEARTBEAT_INTERVAL_MS);
-                console.log(`서버 실행: http://localhost:${PORT}`);
-                resolve();
-            });
-        });
-    } catch (error) {
-        console.error("서버 시작 중 오류 발생:", error);
-        await closeDatabase();
-        throw error;
-    }
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(PORT, () => {
+        server.off("error", reject);
+        heartbeatTimer = startHeartbeat(wss, HEARTBEAT_INTERVAL_MS);
+        console.log(`서버 실행: http://localhost:${PORT}`);
+        resolve();
+      });
+    });
+  } catch (error) {
+    console.error("서버 시작 중 오류 발생:", error);
+    await closeDatabase();
+    throw error;
+  }
 }
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
-    if (isShuttingDown) {
-        return;
-    }
+  if (isShuttingDown) {
+    return;
+  }
 
-    isShuttingDown = true;
+  isShuttingDown = true;
 
-    if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-    }
-    console.log(`\n${signal} 신호 수신, 서버 종료 중...`);
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 
+  console.log(`\n${signal} 신호 수신, 서버 종료 중...`);
+
+  wss.clients.forEach((client) => {
+    client.close(1001, "Server shutting down");
+  });
+
+  const forceTerminateTimer = setTimeout(() => {
     wss.clients.forEach((client) => {
-        client.close(1001, "Server shutting down");
+      client.terminate();
+    });
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceTerminateTimer.unref();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      wss.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
     });
 
-    const forceTerminateTimer = setTimeout(() => {
-        wss.clients.forEach((client) => {
-            client.terminate();
-        });
-    }, SHUTDOWN_TIMEOUT_MS);
-    forceTerminateTimer.unref();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
 
-    try {
-        await new Promise<void>((resolve, reject) => {
-            wss.close((error) => {
-                if (error) {
-                    reject(error);
-                    return;
-                }
+        resolve();
+      });
+    });
 
-                resolve();
-            });
-        });
-
-        await new Promise<void>((resolve, reject) => {
-            server.close((error) => {
-                if (error) {
-                    reject(error);
-                    return;
-                }
-
-                resolve();
-            });
-        });
-
-        await closeDatabase();
-    } catch (error) {
-        console.error("서버 종료 실패:", error);
-        process.exitCode = 1;
-    } finally {
-        clearTimeout(forceTerminateTimer);
-    }
+    await closeDatabase();
+  } catch (error) {
+    console.error("서버 종료 실패:", error);
+    process.exitCode = 1;
+  } finally {
+    clearTimeout(forceTerminateTimer);
+  }
 }
 
 process.once("SIGINT", () => {
-    void shutdown("SIGINT");
+  void shutdown("SIGINT");
 });
 
 process.once("SIGTERM", () => {
-    void shutdown("SIGTERM");
+  void shutdown("SIGTERM");
 });
 
 if (require.main === module) {
-    void startServer().catch(() => {
-        process.exitCode = 1;
-    });
+  void startServer().catch(() => {
+    process.exitCode = 1;
+  });
 }
 
 export { server, startServer, shutdown };
