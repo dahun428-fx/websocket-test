@@ -18,8 +18,11 @@ function createUserRepository(): UserRepository {
         id: "user-100",
         nickname: "neo",
         passwordHash: TEST_PASSWORD_HASH,
+        createdAt: "2026-01-01T00:00:00.000Z",
       };
     }),
+    create: vi.fn(),
+    existsById: vi.fn(),
   };
 }
 

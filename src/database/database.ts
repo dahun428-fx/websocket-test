@@ -29,6 +29,15 @@ export async function initializeDatabase(
   `);
 
   await database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        nickname TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+  `);
+
+  await database.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       room_id TEXT NOT NULL,
@@ -49,7 +58,9 @@ export async function initializeDatabase(
 
 export function getDatabase(): Database<sqlite3.Database, sqlite3.Statement> {
   if (!database) {
-    throw new Error("Database has not been initialized. Call initializeDatabase() first.");
+    throw new Error(
+      "Database has not been initialized. Call initializeDatabase() first.",
+    );
   }
 
   return database;

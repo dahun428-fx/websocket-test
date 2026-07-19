@@ -1,51 +1,112 @@
+import { getDatabase } from "../database/database";
+
 export interface User {
   id: string;
   nickname: string;
   passwordHash: string;
+  createdAt: string;
+}
+
+export interface CreateUserInput {
+  id: string;
+  nickname: string;
+  passwordHash: string;
+  createdAt: string;
 }
 
 export interface UserRepository {
   findById(userId: string): Promise<User | null>;
+
+  create(input: CreateUserInput): Promise<User>;
+
+  existsById(userId: string): Promise<boolean>;
 }
 
-interface StoredUser extends User {
-  passwordHash: string;
+interface UserRow {
+  id: string;
+  nickname: string;
+  password_hash: string;
+  created_at: string;
 }
 
-const users = new Map<string, StoredUser>([
-  [
-    "user-100",
-    {
-      id: "user-100",
-      nickname: "스완",
-      passwordHash:
-        "$2b$12$nqdy15ta1ILfCfH7nih9Tu5Vk3VVr/Mdp4Gu2ucu48iLUHvEouLu6",
-    },
-  ],
-  [
-    "user-200",
-    {
-      id: "user-200",
-      nickname: "철수",
-      passwordHash:
-        "$2b$12$nqdy15ta1ILfCfH7nih9Tu5Vk3VVr/Mdp4Gu2ucu48iLUHvEouLu6",
-    },
-  ],
-]);
+interface ExistsRow {
+  exists_value: number;
+}
 
-function toUser(user: StoredUser): User {
+function mapUserRow(row: UserRow): User {
   return {
-    id: user.id,
-    nickname: user.nickname,
-    passwordHash: user.passwordHash,
+    id: row.id,
+    nickname: row.nickname,
+    passwordHash: row.password_hash,
+    createdAt: row.created_at,
   };
 }
 
 async function findById(userId: string): Promise<User | null> {
-  const user = users.get(userId);
-  return user ? toUser(user) : null;
+  const db = await getDatabase();
+
+  const row = await db.get<UserRow>(
+    `
+            SELECT
+                id,
+                nickname,
+                password_hash,
+                created_at
+            FROM users
+            WHERE id = ?
+        `,
+    userId,
+  );
+
+  return row ? mapUserRow(row) : null;
+}
+
+async function create(input: CreateUserInput): Promise<User> {
+  const db = getDatabase();
+
+  await db.run(
+    `
+            INSERT INTO users (
+                id,
+                nickname,
+                password_hash,
+                created_at
+            )
+            VALUES (?, ?, ?, ?)
+        `,
+    input.id,
+    input.nickname,
+    input.passwordHash,
+    input.createdAt,
+  );
+
+  return {
+    id: input.id,
+    nickname: input.nickname,
+    passwordHash: input.passwordHash,
+    createdAt: input.createdAt,
+  };
+}
+
+async function existsById(userId: string): Promise<boolean> {
+  const db = getDatabase();
+
+  const row = await db.get<ExistsRow>(
+    `
+            SELECT EXISTS(
+                SELECT 1
+                FROM users
+                WHERE id = ?
+            ) AS exists_value
+        `,
+    userId,
+  );
+
+  return row?.exists_value === 1;
 }
 
 export const userRepository: UserRepository = {
   findById,
+  create,
+  existsById,
 };
