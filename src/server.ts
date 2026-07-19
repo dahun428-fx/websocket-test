@@ -5,7 +5,6 @@ import http, { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import WebSocket, { RawData, WebSocketServer } from "ws";
 
-import { createAccessToken } from "./auth/tokenService";
 import { closeDatabase, initializeDatabase } from "./database/database";
 import { ERROR_MESSAGES } from "./errors/errorMessages";
 import type { ErrorCode } from "./errors/errorMessages";
@@ -20,6 +19,7 @@ import { enqueueMessage } from "./queue/messageQueue";
 import { messageRepository } from "./repositories/messageRepository";
 import { userRepository } from "./repositories/userRepository";
 import { loginRequestSchema } from "./schemas/loginSchema";
+import { createAuthService } from "./service/authService";
 import createRoomService from "./service/roomService";
 import type { MessageHandlerContext } from "./types/handler";
 import type { ServerMessage } from "./types/messages";
@@ -33,6 +33,7 @@ const HEARTBEAT_INTERVAL_MS = resolveHeartbeatIntervalMs(
 
 let isShuttingDown = false;
 let heartbeatTimer: NodeJS.Timeout | null = null;
+const authService = createAuthService(userRepository);
 
 function sendHttpJson(
   res: ServerResponse,
@@ -96,24 +97,16 @@ async function handleLoginRequest(
   }
 
   const { userId, password } = parseResult.data;
-  const user = await userRepository.authenticate(userId, password);
+  const loginResult = await authService.login(userId, password);
 
-  if (!user) {
+  if (!loginResult) {
     sendHttpJson(res, 401, {
       message: "사용자 ID 또는 비밀번호가 올바르지 않습니다.",
     });
     return;
   }
 
-  const accessToken = createAccessToken(user.id, user.nickname);
-
-  sendHttpJson(res, 200, {
-    accessToken,
-    user: {
-      userId: user.id,
-      nickname: user.nickname,
-    },
-  });
+  sendHttpJson(res, 200, loginResult);
 }
 
 async function serveIndex(res: ServerResponse): Promise<void> {

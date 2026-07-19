@@ -1,0 +1,22 @@
+{
+  "editor.quickSuggestions": { "other": true, "comments": false, "strings": false },
+  "editor.suggestOnTriggerCharacters": true,
+  "editor.wordBasedSuggestions": "matchingDocuments",
+  "editor.tabCompletion": "on",
+  "editor.acceptSuggestionOnEnter": "on",
+  "editor.suggestSelection": "first",
+  "editor.inlineSuggest.enabled": true,
+  "editor.suggest.localityBonus": true,
+  "editor.suggest.snippetsPreventQuickSuggestions": false,
+  "editor.suggest.showWords": true,
+  "typescript.suggest.enabled": true,
+  "javascript.suggest.enabled": true,
+  "github.copilot.enable": {
+    "*": true,
+    "plaintext": false,
+    "markdown": false
+  },
+  "github.copilot.inlineSuggest.enable": true,
+  "github.copilot.inlineSuggest.showToolbar": true,
+  "github.copilot.chat.locales": ["ko"]
+}
