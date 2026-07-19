@@ -1,26 +1,32 @@
-import { verifyPassword } from "../auth/passwordService";
+import { hashPassword, verifyPassword } from "../auth/passwordService";
 import { createAccessToken } from "../auth/tokenService";
-import type { UserRepository } from "../repositories/userRepository";
+import {
+  UserAlreadyExistsError,
+  type UserRepository,
+} from "../repositories/userRepository";
+import { AuthResponse } from "../types/auth";
 
-export interface AuthenticatedUser {
+export type AuthResult = AuthResponse;
+export interface SingupInput {
   userId: string;
   nickname: string;
+  password: string;
 }
 
-export interface LoginResult {
-  accessToken: string;
-  user: AuthenticatedUser;
-}
+export type SignupResult =
+  | { success: true; data: AuthResult }
+  | { success: false; reason: "USER_ID_ALREADY_EXISTS" };
 
 export interface AuthService {
-  login(userId: string, password: string): Promise<LoginResult | null>;
+  login(userId: string, password: string): Promise<AuthResult | null>;
+  signup(input: SingupInput): Promise<SignupResult | null>;
 }
 
 export function createAuthService(userRepository: UserRepository): AuthService {
   async function login(
     userId: string,
     password: string,
-  ): Promise<LoginResult | null> {
+  ): Promise<AuthResult | null> {
     const user = await userRepository.findById(userId);
 
     if (!user) return null;
@@ -39,7 +45,52 @@ export function createAuthService(userRepository: UserRepository): AuthService {
       },
     };
   }
+
+  async function signup(input: SingupInput): Promise<SignupResult> {
+    const exists = await userRepository.existsById(input.userId);
+    if (exists) {
+      return {
+        success: false,
+        reason: "USER_ID_ALREADY_EXISTS",
+      };
+    }
+    const { userId, nickname, password } = input;
+    const passwordHash = await hashPassword(password);
+
+    try {
+      const user = await userRepository.create({
+        id: userId,
+        nickname: nickname,
+        passwordHash,
+        createdAt: new Date().toISOString(),
+      });
+
+      return {
+        success: true,
+
+        data: {
+          accessToken: createAccessToken(user.id, user.nickname),
+
+          user: {
+            userId: user.id,
+            nickname: user.nickname,
+          },
+        },
+      };
+    } catch (error) {
+      if (error instanceof UserAlreadyExistsError) {
+        return {
+          success: false,
+          reason: "USER_ID_ALREADY_EXISTS",
+        };
+      }
+
+      throw error;
+    }
+  }
+
   return {
     login,
+    signup,
   };
 }

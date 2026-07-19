@@ -24,6 +24,7 @@ import createRoomService from "./service/roomService";
 import type { MessageHandlerContext } from "./types/handler";
 import type { ServerMessage } from "./types/messages";
 import type { ChatWebSocket } from "./types/websocket";
+import { signupRequestSchema } from "./schemas/signupSchema";
 
 const PORT = Number(process.env.PORT) || 3010;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -109,6 +110,45 @@ async function handleLoginRequest(
   sendHttpJson(res, 200, loginResult);
 }
 
+async function handleSignup(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let rawBody: unknown;
+  try {
+    rawBody = await readRequestBody(req);
+  } catch {
+    sendHttpJson(res, 400, {
+      message: "올바른 JSON 형식이 아닙니다.",
+    });
+    return;
+  }
+
+  const parseResult = signupRequestSchema.safeParse(rawBody);
+
+  if (!parseResult.success) {
+    sendHttpJson(res, 400, {
+      message:
+        parseResult.error.issues[0]?.message ??
+        "올바르지 않은 회원가입 요청입니다.",
+    });
+
+    return;
+  }
+
+  const result = await authService.signup(parseResult.data);
+
+  if (!result?.success) {
+    sendHttpJson(res, 409, {
+      code: result?.reason,
+      message: "이미 사용 중인 사용자 ID입니다.",
+    });
+    return;
+  }
+
+  sendHttpJson(res, 201, result.data);
+}
+
 async function serveIndex(res: ServerResponse): Promise<void> {
   const filePath = path.join(__dirname, "..", "public", "index.html");
 
@@ -132,6 +172,24 @@ async function handleHttpRequest(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   );
+
+  if (requestUrl.pathname === "/signup") {
+    if (req.method !== "POST") {
+      sendHttpJson(res, 405, {
+        message: "POST 요청만 허용됩니다.",
+      });
+      return;
+    }
+    void handleSignup(req, res).catch((error) => {
+      console.error("회원가입 처리 오류:", error);
+      if (!res.headersSent) {
+        sendHttpJson(res, 500, {
+          message: "서버 내부 오류가 발생했습니다.",
+        });
+      }
+    });
+    return;
+  }
 
   if (requestUrl.pathname === "/login") {
     if (req.method !== "POST") {

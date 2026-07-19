@@ -1,5 +1,13 @@
 import { getDatabase } from "../database/database";
 
+export class UserAlreadyExistsError extends Error {
+  constructor(userId: string) {
+    super(`이미 존재하는 사용자입니다: ${userId}`);
+
+    this.name = "UserAlreadyExistsError";
+  }
+}
+
 export interface User {
   id: string;
   nickname: string;
@@ -43,7 +51,7 @@ function mapUserRow(row: UserRow): User {
 }
 
 async function findById(userId: string): Promise<User | null> {
-  const db = await getDatabase();
+  const db = getDatabase();
 
   const row = await db.get<UserRow>(
     `
@@ -64,21 +72,32 @@ async function findById(userId: string): Promise<User | null> {
 async function create(input: CreateUserInput): Promise<User> {
   const db = getDatabase();
 
-  await db.run(
-    `
-            INSERT INTO users (
-                id,
-                nickname,
-                password_hash,
-                created_at
-            )
-            VALUES (?, ?, ?, ?)
-        `,
-    input.id,
-    input.nickname,
-    input.passwordHash,
-    input.createdAt,
-  );
+  try {
+    await db.run(
+      `
+                INSERT INTO users (
+                    id,
+                    nickname,
+                    password_hash,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?)
+            `,
+      input.id,
+      input.nickname,
+      input.passwordHash,
+      input.createdAt,
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("UNIQUE constraint failed")
+    ) {
+      throw new UserAlreadyExistsError(input.id);
+    }
+
+    throw error;
+  }
 
   return {
     id: input.id,
