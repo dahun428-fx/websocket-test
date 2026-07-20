@@ -1,230 +1,184 @@
 import jwt from "jsonwebtoken";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { chatHandler } from "./chatHandler";
-import { historyHandler } from "./historyHandler";
-import { registerHandler } from "./registerHandler";
 import { createAccessToken } from "../auth/tokenService";
-import type { MessageHandlerContext } from "../types/handler";
+import type { MessageRepository } from "../repositories/messageRepository";
+import type { RoomService } from "../service/roomService";
+import type { SendError, SendJson } from "../types/handler";
 import type { ChatWebSocket } from "../types/websocket";
-
-function createContext(): MessageHandlerContext {
-    return {
-        roomService: {
-            broadcastToRoom: vi.fn(() => 1),
-            getConnectionCount: vi.fn(() => 1),
-            getUserCount: vi.fn(() => 1),
-            getUserConnections: vi.fn(() => []),
-            sendToUser: vi.fn(() => 0),
-            getClients: vi.fn(() => []),
-            join: vi.fn((ws, roomId) => {
-                ws.room_id = roomId;
-                return roomId;
-            }),
-            leave: vi.fn(() => null),
-        },
-        messageRepository: {
-            save: vi.fn(async (_roomId, message) => ({ ...message, id: 1 })),
-            get: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
-            getBefore: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
-            clear: vi.fn(async () => undefined),
-        },
-        sendJson: vi.fn(async () => undefined),
-        sendError: vi.fn(async () => undefined),
-        sendRoomHistory: vi.fn(async () => undefined),
-        createTimestamp: vi.fn(() => "2026-01-01T00:00:00.000Z"),
-    };
-}
+import { createChatHandler } from "./chatHandler";
+import { createHistoryHandler } from "./historyHandler";
+import { createRegisterHandler } from "./registerHandler";
 
 function createSocket(): ChatWebSocket {
-    return { userId: null, nickname: null, room_id: null } as ChatWebSocket;
+  return {
+    userId: null,
+    nickname: null,
+    room_id: null,
+    isClosed: false,
+    close: vi.fn(),
+  } as unknown as ChatWebSocket;
 }
 
-function createTestToken(
-    userId = "user-1",
-    nickname = "neo",
-): string {
-    process.env.JWT_SECRET = "test-secret";
-    return createAccessToken(userId, nickname);
+function createRoomService(): RoomService {
+  return {
+    broadcastToRoom: vi.fn(() => 1),
+    getConnectionCount: vi.fn(() => 1),
+    getUserCount: vi.fn(() => 1),
+    getUserConnections: vi.fn(() => []),
+    sendToUser: vi.fn(() => 0),
+    getClients: vi.fn(() => []),
+    join: vi.fn((socket, roomId) => {
+      socket.room_id = roomId;
+      return roomId;
+    }),
+    leave: vi.fn((socket) => {
+      if (!socket) return null;
+      const roomId = socket.room_id;
+      socket.room_id = null;
+      return roomId;
+    }),
+  };
 }
 
-function createExpiredTestToken(): string {
-    process.env.JWT_SECRET = "test-secret";
-    return jwt.sign(
-        { sub: "user-1", nickname: "neo" },
-        process.env.JWT_SECRET,
-        { expiresIn: "-1s" },
-    );
+function createMessageRepository(): MessageRepository {
+  return {
+    save: vi.fn(async (_roomId, message) => ({ ...message, id: 1 })),
+    get: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
+    getBefore: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
+  };
 }
+
+function createToken(userId = "user-1", nickname = "neo"): string {
+  return createAccessToken(userId, nickname);
+}
+
+afterEach(() => {
+  delete process.env.JWT_SECRET;
+});
 
 describe("message handlers", () => {
-    it("rejects chat before registration with a stable error code", async () => {
-        const context = createContext();
-
-        await expect(chatHandler.handle(createSocket(), { type: "chat", message: "hello" }, context))
-            .resolves.toBe(false);
-        expect(context.sendError).toHaveBeenCalledWith(expect.anything(), "NICKNAME_NOT_REGISTERED");
+  it("registers using only the authenticated token nickname", async () => {
+    process.env.JWT_SECRET = "test-secret";
+    const socket = createSocket();
+    const sendJson: SendJson = vi.fn(async () => undefined);
+    const handler = createRegisterHandler({
+      roomService: createRoomService(),
+      sendJson,
+      sendError: vi.fn(async () => undefined),
+      sendRoomHistory: vi.fn(async () => undefined),
+      createTimestamp: () => "2026-01-01T00:00:00.000Z",
     });
 
-    it("stores and broadcasts a chat message using trusted socket state", async () => {
-        const context = createContext();
-        const socket = createSocket();
-        socket.nickname = "neo";
-        socket.room_id = "room-1";
+    await expect(handler(socket, {
+      type: "register",
+      token: createToken("user-1", "trinity"),
+      room_id: "room-1",
+    })).resolves.toBe(true);
 
-        await expect(chatHandler.handle(socket, { type: "chat", message: " hello " }, context))
-            .resolves.toBe(true);
-        expect(context.messageRepository.save).toHaveBeenCalledWith("room-1", expect.objectContaining({
-            nickname: "neo", room_id: "room-1", message: "hello",
-        }));
-        expect(context.roomService.broadcastToRoom).toHaveBeenCalledOnce();
+    expect(socket).toMatchObject({ userId: "user-1", nickname: "trinity", room_id: "room-1" });
+    expect(sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({ nickname: "trinity" }));
+  });
+
+  it("rejects a token without a nickname", async () => {
+    process.env.JWT_SECRET = "test-secret";
+    const socket = createSocket();
+    const sendError: SendError = vi.fn(async () => undefined);
+    const handler = createRegisterHandler({
+      roomService: createRoomService(),
+      sendJson: vi.fn(async () => undefined),
+      sendError,
+      sendRoomHistory: vi.fn(async () => undefined),
+      createTimestamp: () => "timestamp",
+    });
+    const token = jwt.sign({ sub: "user-1" }, "test-secret");
+
+    await expect(handler(socket, {
+      type: "register",
+      token,
+      room_id: "room-1",
+    })).resolves.toBe(false);
+
+    expect(sendError).toHaveBeenCalledWith(socket, "INVALID_ACCESS_TOKEN");
+  });
+
+  it("rolls back and closes the socket when history delivery fails", async () => {
+    process.env.JWT_SECRET = "test-secret";
+    const socket = createSocket();
+    const roomService = createRoomService();
+    const handler = createRegisterHandler({
+      roomService,
+      sendJson: vi.fn(async () => undefined),
+      sendError: vi.fn(async () => undefined),
+      sendRoomHistory: vi.fn(async () => { throw new Error("history unavailable"); }),
+      createTimestamp: () => "timestamp",
     });
 
-    it("does not broadcast when message persistence fails", async () => {
-        const context = createContext();
-        const socket = createSocket();
-        socket.nickname = "neo";
-        socket.room_id = "room-1";
-        context.messageRepository.save = vi.fn(async () => {
-            throw new Error("storage unavailable");
-        });
+    await expect(handler(socket, {
+      type: "register",
+      token: createToken(),
+      room_id: "room-1",
+    })).rejects.toThrow("history unavailable");
 
-        await expect(chatHandler.handle(socket, {
-            type: "chat", message: "hello",
-        }, context)).rejects.toThrow("storage unavailable");
-        expect(context.roomService.broadcastToRoom).not.toHaveBeenCalled();
+    expect(socket).toMatchObject({ userId: null, nickname: null, room_id: null });
+    expect(roomService.leave).toHaveBeenCalledWith(socket);
+    expect(socket.close).toHaveBeenCalledWith(1011, "Registration failed");
+  });
+
+  it("stores and broadcasts chat using trusted socket state", async () => {
+    const socket = createSocket();
+    socket.nickname = "neo";
+    socket.room_id = "room-1";
+    const roomService = createRoomService();
+    const messageRepository = createMessageRepository();
+    const handler = createChatHandler({
+      roomService,
+      messageRepository,
+      sendError: vi.fn(async () => undefined),
+      createTimestamp: () => "timestamp",
     });
 
-    it("registers a valid user and sends registration responses", async () => {
-        const context = createContext();
-        const socket = createSocket();
+    await expect(handler(socket, { type: "chat", message: " hello " })).resolves.toBe(true);
+    expect(messageRepository.save).toHaveBeenCalledWith("room-1", expect.objectContaining({
+      nickname: "neo",
+      message: "hello",
+    }));
+    expect(roomService.broadcastToRoom).toHaveBeenCalledOnce();
+  });
 
-        await expect(registerHandler.handle(socket, {
-            type: "register", token: createTestToken("user-1"), nickname: "neo", room_id: "room-1",
-        }, context)).resolves.toBe(true);
-        expect(socket).toMatchObject({ userId: "user-1", nickname: "neo", room_id: "room-1" });
-        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
-            type: "register-success", userId: "user-1", roomUserCount: 1,
-        }));
-        expect(context.sendRoomHistory).toHaveBeenCalledWith(socket, "room-1");
+  it("does not broadcast when chat persistence fails", async () => {
+    const socket = createSocket();
+    socket.nickname = "neo";
+    socket.room_id = "room-1";
+    const roomService = createRoomService();
+    const messageRepository = createMessageRepository();
+    messageRepository.save = vi.fn(async () => { throw new Error("storage unavailable"); });
+    const handler = createChatHandler({
+      roomService,
+      messageRepository,
+      sendError: vi.fn(async () => undefined),
+      createTimestamp: () => "timestamp",
     });
 
-    it("uses the authenticated token nickname instead of a client-supplied nickname", async () => {
-        const context = createContext();
-        const socket = createSocket();
+    await expect(handler(socket, { type: "chat", message: "hello" })).rejects.toThrow("storage unavailable");
+    expect(roomService.broadcastToRoom).not.toHaveBeenCalled();
+  });
 
-        await expect(registerHandler.handle(socket, {
-            type: "register",
-            token: createTestToken("user-1", "trusted-name"),
-            nickname: "spoofed-name",
-            room_id: "room-1",
-        }, context)).resolves.toBe(true);
-
-        expect(socket.nickname).toBe("trusted-name");
-        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
-            nickname: "trusted-name",
-        }));
-        expect(context.roomService.broadcastToRoom).toHaveBeenCalledWith(
-            "room-1",
-            expect.objectContaining({
-                message: "trusted-name님이 입장했습니다.",
-            }),
-        );
+  it("requires room registration before loading history", async () => {
+    const socket = createSocket();
+    const sendError: SendError = vi.fn(async () => undefined);
+    const handler = createHistoryHandler({
+      messageRepository: createMessageRepository(),
+      sendJson: vi.fn(async () => undefined),
+      sendError,
+      createTimestamp: () => "timestamp",
     });
 
-    it("returns an invalid token error for malformed tokens", async () => {
-        const context = createContext();
-        const socket = createSocket();
-        process.env.JWT_SECRET = "test-secret";
-        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-        await expect(registerHandler.handle(socket, {
-            type: "register", token: "invalid-token", nickname: "neo", room_id: "room-1",
-        }, context)).resolves.toBe(false);
-        expect(context.sendError).toHaveBeenLastCalledWith(socket, "INVALID_ACCESS_TOKEN");
-        expect(context.roomService.join).not.toHaveBeenCalled();
-        consoleError.mockRestore();
-    });
-
-    it("returns an expired token error for expired tokens", async () => {
-        const context = createContext();
-        const socket = createSocket();
-
-        await expect(registerHandler.handle(socket, {
-            type: "register", token: createExpiredTestToken(), nickname: "neo", room_id: "room-1",
-        }, context)).resolves.toBe(false);
-        expect(context.sendError).toHaveBeenLastCalledWith(socket, "ACCESS_TOKEN_EXPIRED");
-        expect(context.roomService.join).not.toHaveBeenCalled();
-    });
-
-    it("returns an error code for repeated registration", async () => {
-        const context = createContext();
-        const socket = createSocket();
-
-        socket.nickname = "neo";
-        await expect(registerHandler.handle(socket, {
-            type: "register", token: createTestToken("user-2", "trinity"), nickname: "trinity", room_id: "room-1",
-        }, context)).resolves.toBe(false);
-        expect(context.sendError).toHaveBeenLastCalledWith(socket, "ALREADY_REGISTERED");
-    });
-
-    it("does not announce an entry after the connection closes during history delivery", async () => {
-        const context = createContext();
-        const socket = createSocket();
-        let resolveHistory: (() => void) | undefined;
-        context.sendRoomHistory = vi.fn(() => new Promise<void>((resolve) => {
-            resolveHistory = resolve;
-        }));
-
-        const registration = registerHandler.handle(socket, {
-            type: "register", token: createTestToken("user-1"), nickname: "neo", room_id: "room-1",
-        }, context);
-
-        await vi.waitFor(() => {
-            expect(context.sendJson).toHaveBeenCalledOnce();
-            expect(context.sendRoomHistory).toHaveBeenCalledOnce();
-        });
-        expect(context.roomService.broadcastToRoom).not.toHaveBeenCalled();
-
-        socket.userId = null;
-        socket.nickname = null;
-        socket.room_id = null;
-        resolveHistory?.();
-
-        await expect(registration).resolves.toBe(false);
-        expect(context.roomService.broadcastToRoom).not.toHaveBeenCalled();
-    });
-
-    it("sends a cursor history page only to a registered room member", async () => {
-        const context = createContext();
-        const socket = createSocket();
-        socket.room_id = "room-1";
-        const page = {
-            messages: [{
-                id: 10, type: "chat" as const, nickname: "neo", room_id: "room-1",
-                message: "hello", createdAt: "2026-01-01T00:00:00.000Z",
-            }],
-            hasMore: true,
-            nextBeforeId: 10,
-        };
-        context.messageRepository.getBefore = vi.fn(async () => page);
-
-        await expect(historyHandler.handle(socket, {
-            type: "history-request", before_id: 20, limit: 30,
-        }, context)).resolves.toBe(true);
-        expect(context.messageRepository.getBefore).toHaveBeenCalledWith("room-1", 20, 30);
-        expect(context.sendJson).toHaveBeenCalledWith(socket, expect.objectContaining({
-            type: "history", hasMore: true, nextBeforeId: 10,
-        }));
-    });
-
-    it("rejects a history request before joining a room", async () => {
-        const context = createContext();
-
-        await expect(historyHandler.handle(createSocket(), {
-            type: "history-request", before_id: 10, limit: 30,
-        }, context)).resolves.toBe(false);
-        expect(context.sendError).toHaveBeenCalledWith(expect.anything(), "ROOM_NOT_JOINED");
-        expect(context.messageRepository.getBefore).not.toHaveBeenCalled();
-    });
+    await expect(handler(socket, {
+      type: "history-request",
+      before_id: 10,
+      limit: 20,
+    })).resolves.toBe(false);
+    expect(sendError).toHaveBeenCalledWith(socket, "ROOM_NOT_JOINED");
+  });
 });

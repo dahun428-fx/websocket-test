@@ -33,7 +33,7 @@ describe("tokenService", () => {
   it("requires JWT_SECRET", () => {
     delete process.env.JWT_SECRET;
 
-    expect(() => createAccessToken("user-100")).toThrow(
+    expect(() => createAccessToken("user-100", "neo")).toThrow(
       "JWT_SECRET 환경변수가 필요합니다.",
     );
   });

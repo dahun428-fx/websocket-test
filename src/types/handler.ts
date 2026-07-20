@@ -1,65 +1,20 @@
-import type {
-    ChatInputMessage,
-    ClientMessage,
-    RegisterMessage,
-    ServerMessage,
-} from "./messages";
-
-import type { ChatWebSocket } from "./websocket";
 import type { ErrorCode } from "../errors/errorMessages";
-import type { MessageRepository } from "../repositories/messageRepository";
-import type { RoomService } from "../service/roomService";
-import type { HistoryRequestMessage } from "../schemas/clientMessageSchema";
+import type { ClientMessage } from "../schemas/clientMessageSchema";
+import type { ChatWebSocket } from "./websocket";
+import type { ServerMessage } from "./messages";
 
-export interface MessageHandlerContext {
-    roomService: RoomService;
-    messageRepository: MessageRepository;
+export type SendJson = (
+  socket: ChatWebSocket,
+  payload: ServerMessage,
+) => Promise<void>;
 
-    sendJson: (
-        ws: ChatWebSocket,
-        payload: ServerMessage,
-    ) => Promise<void>;
+export type SendError = (
+  socket: ChatWebSocket,
+  code: ErrorCode,
+) => Promise<void>;
 
-    sendError: (
-        ws: ChatWebSocket,
-        code: ErrorCode,
-    ) => Promise<void>;
-
-    sendRoomHistory: (
-        ws: ChatWebSocket,
-        roomId: string,
-    ) => Promise<void>;
-
-    createTimestamp: () => string;
+export interface MessageHandlers {
+  register: (socket: ChatWebSocket, message: Extract<ClientMessage, { type: "register" }>) => Promise<boolean>;
+  chat: (socket: ChatWebSocket, message: Extract<ClientMessage, { type: "chat" }>) => Promise<boolean>;
+  history: (socket: ChatWebSocket, message: Extract<ClientMessage, { type: "history-request" }>) => Promise<boolean>;
 }
-
-export interface RegisterHandler {
-    type: 'register';
-    handle: (
-        ws: ChatWebSocket,
-        message: RegisterMessage,
-        context: MessageHandlerContext,
-    ) => Promise<boolean>;
-}
-
-export interface ChatHandler {
-    type: 'chat';
-    handle: (
-        ws: ChatWebSocket,
-        message: ChatInputMessage,
-        context: MessageHandlerContext,
-    ) => Promise<boolean>;
-}
-
-export interface HistoryHandler {
-    type: 'history-request',
-    handle: (
-        ws: ChatWebSocket,
-        message: HistoryRequestMessage,
-        context: MessageHandlerContext
-    ) => Promise<boolean>;
-}
-
-export type MessageHandler = RegisterHandler | ChatHandler | HistoryHandler;
-
-export type MessageType = ClientMessage['type'];

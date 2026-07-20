@@ -1,38 +1,42 @@
-import type { ChatHandler } from "../types/handler";
-import type { NewChatMessage } from "../types/messages";
+import type { MessageRepository } from "../repositories/messageRepository";
+import type { RoomService } from "../service/roomService";
+import type { SendError } from "../types/handler";
+import type { ChatInputMessage, NewChatMessage } from "../types/messages";
+import type { ChatWebSocket } from "../types/websocket";
 
-export const chatHandler: ChatHandler = {
-  type: "chat",
-  handle: async (ws, data, context) => {
-    const {
-      roomService,
-      messageRepository,
-      sendError,
-      createTimestamp,
-    } = context;
+export interface ChatHandlerDependencies {
+  roomService: RoomService;
+  messageRepository: MessageRepository;
+  sendError: SendError;
+  createTimestamp(): string;
+}
 
-    const nickname = ws.nickname?.trim();
-    const roomId = ws.room_id?.trim();
+export function createChatHandler(dependencies: ChatHandlerDependencies) {
+  const { roomService, messageRepository, sendError, createTimestamp } = dependencies;
+
+  return async function handleChat(
+    socket: ChatWebSocket,
+    data: ChatInputMessage,
+  ): Promise<boolean> {
+    const nickname = socket.nickname?.trim();
+    const roomId = socket.room_id?.trim();
 
     if (!nickname) {
-      await sendError(ws, "NICKNAME_NOT_REGISTERED");
+      await sendError(socket, "NICKNAME_NOT_REGISTERED");
       return false;
     }
-
     if (!roomId) {
-      await sendError(ws, "ROOM_NOT_JOINED");
+      await sendError(socket, "ROOM_NOT_JOINED");
       return false;
     }
 
     const message = data.message.trim();
-
     if (!message) {
-      await sendError(ws, "CHAT_REQUIRED");
+      await sendError(socket, "CHAT_REQUIRED");
       return false;
     }
-
     if (message.length > 1000) {
-      await sendError(ws, "CHAT_TOO_LONG");
+      await sendError(socket, "CHAT_TOO_LONG");
       return false;
     }
 
@@ -43,10 +47,8 @@ export const chatHandler: ChatHandler = {
       message,
       createdAt: createTimestamp(),
     };
-
-    console.log(`${roomId}방에 저장하고 브로드캐스트할 채팅:`, chatMessage);
-    const savedChatMessage = await messageRepository.save(roomId, chatMessage);
-    roomService.broadcastToRoom(roomId, savedChatMessage);
+    const savedMessage = await messageRepository.save(roomId, chatMessage);
+    roomService.broadcastToRoom(roomId, savedMessage);
     return true;
-  },
-};
+  };
+}

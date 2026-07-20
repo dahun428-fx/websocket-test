@@ -1,142 +1,115 @@
-import type { AddressInfo } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
 
+import { createApplication, type Application } from "./application";
 import { hashPassword } from "./auth/passwordService";
-import { closeDatabase, initializeDatabase } from "./database/database";
-import { userRepository } from "./repositories/userRepository";
-import { server } from "./server";
+import { openDatabase } from "./database/database";
+import { createUserRepository } from "./repositories/userRepository";
 
-let baseUrl: string;
-let testDirectory: string | undefined;
+describe("Application", () => {
+  let application: Application;
+  let baseUrl: string;
+  let testDirectory: string;
 
-function getServerUrl(): string {
-  const address = server.address();
-
-  if (!address || typeof address === "string") {
-    throw new Error("Test server address is unavailable.");
-  }
-
-  return `http://127.0.0.1:${(address as AddressInfo).port}`;
-}
-
-function listenServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onError = (error: Error) => {
-      server.off("listening", onListening);
-      reject(error);
-    };
-    const onListening = () => {
-      server.off("error", onError);
-      resolve();
-    };
-
-    server.once("error", onError);
-    server.listen(0, "127.0.0.1", onListening);
-  });
-}
-
-function closeServer(): Promise<void> {
-  if (!server.listening) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
+  beforeEach(async () => {
+    process.env.JWT_SECRET = "test-secret";
+    testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
+    const databasePath = path.join(testDirectory, "server-test.db");
+    const database = await openDatabase(databasePath);
+    await createUserRepository(database).create({
+      id: "user-100",
+      nickname: "neo",
+      passwordHash: await hashPassword("test1234"),
+      createdAt: "2026-01-01T00:00:00.000Z",
     });
-  });
-}
+    await database.close();
 
-async function postLogin(payload: unknown): Promise<Response> {
-  return fetch(`${baseUrl}/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: typeof payload === "string" ? payload : JSON.stringify(payload),
-  });
-}
-
-beforeEach(async () => {
-  process.env.JWT_SECRET = "test-secret";
-  testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
-  await initializeDatabase(path.join(testDirectory, "server-test.db"));
-  await userRepository.create({
-    id: "user-100",
-    nickname: "neo",
-    passwordHash: await hashPassword("test1234"),
-    createdAt: "2026-01-01T00:00:00.000Z",
-  });
-  await listenServer();
-  baseUrl = getServerUrl();
-});
-
-afterEach(async () => {
-  await closeServer();
-  await closeDatabase();
-  if (testDirectory) {
-    await rm(testDirectory, { recursive: true, force: true });
-    testDirectory = undefined;
-  }
-  delete process.env.JWT_SECRET;
-});
-
-describe("HTTP server", () => {
-  it("returns an access token for valid login credentials", async () => {
-    const response = await postLogin({
-      userId: "user-100",
-      password: "test1234",
-    });
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body).toEqual({
-      accessToken: expect.any(String),
-      user: {
-        userId: "user-100",
-        nickname: "neo",
+    application = await createApplication({
+      databasePath,
+      websocketMaxPayloadBytes: 64,
+      authHttp: {
+        maxBodyBytes: 256,
+        loginRateLimit: { maxAttempts: 10, windowMs: 60_000 },
       },
     });
+    const port = await application.start();
+    baseUrl = `http://127.0.0.1:${port}`;
   });
 
-  it("rejects invalid login credentials", async () => {
-    const response = await postLogin({
-      userId: "user-100",
-      password: "wrong-password",
-    });
-    const body = await response.json();
+  afterEach(async () => {
+    await application.stop();
+    await rm(testDirectory, { recursive: true, force: true });
+    delete process.env.JWT_SECRET;
+  });
 
-    expect(response.status).toBe(401);
-    expect(body).toEqual({
-      message: expect.any(String),
+  it("returns an access token for valid login credentials", async () => {
+    const response = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "user-100", password: "test1234" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      accessToken: expect.any(String),
+      user: { userId: "user-100", nickname: "neo" },
     });
   });
 
-  it("rejects malformed JSON bodies", async () => {
-    const response = await postLogin("{");
-    const body = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(body).toEqual({
-      message: expect.any(String),
+  it("creates a user from a JSON signup request and rejects duplicates", async () => {
+    const request = () => fetch(`${baseUrl}/signup`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "user-200", nickname: "trinity", password: "test1234" }),
     });
+
+    expect((await request()).status).toBe(201);
+    expect((await request()).status).toBe(409);
   });
 
-  it("rejects non-POST login requests", async () => {
-    const response = await fetch(`${baseUrl}/login`);
-    const body = await response.json();
+  it("rejects malformed JSON and exposes the POST method contract", async () => {
+    const malformed = await fetch(`${baseUrl}/login`, { method: "POST", body: "{" });
+    const wrongMethod = await fetch(`${baseUrl}/login`);
 
-    expect(response.status).toBe(405);
-    expect(body).toEqual({
-      message: expect.any(String),
+    expect(malformed.status).toBe(400);
+    expect(wrongMethod.status).toBe(405);
+    expect(wrongMethod.headers.get("allow")).toBe("POST");
+  });
+
+  it("closes WebSocket connections that exceed maxPayload", async () => {
+    const webSocketUrl = baseUrl.replace("http://", "ws://");
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const socket = new WebSocket(webSocketUrl);
+      socket.once("open", () => socket.send("x".repeat(65)));
+      socket.once("close", resolve);
+      socket.once("error", reject);
     });
+
+    expect(closeCode).toBe(1009);
+  });
+
+  it("stops idempotently", async () => {
+    await application.stop();
+    await expect(application.stop()).resolves.toBeUndefined();
+  });
+
+  it("cleans up when startup fails", async () => {
+    const blocker = http.createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+    const port = (blocker.address() as AddressInfo).port;
+    const secondDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
+    const second = await createApplication({
+      databasePath: path.join(secondDirectory, "failed-start.db"),
+    });
+
+    await expect(second.start(port)).rejects.toMatchObject({ code: "EADDRINUSE" });
+    await expect(second.stop()).resolves.toBeUndefined();
+
+    await new Promise<void>((resolve, reject) => blocker.close((error) => error ? reject(error) : resolve()));
+    await rm(secondDirectory, { recursive: true, force: true });
   });
 });

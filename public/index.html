@@ -189,7 +189,7 @@
 
         <div class="field">
             <label for="passwordInput">비밀번호</label>
-            <input id="passwordInput" type="password" value="test1234" placeholder="비밀번호" />
+                <input id="passwordInput" type="password" placeholder="비밀번호" />
         </div>
 
         <div class="button-group">
@@ -526,7 +526,6 @@
                 sendJson({
                     type: "register",
                     token: accessToken,
-                    nickname: loggedInUser.nickname,
                     room_id: roomId,
                 });
             } catch (error) {

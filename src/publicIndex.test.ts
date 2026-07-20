@@ -74,7 +74,7 @@ describe("public index", () => {
     expect(connectIndex).toBeGreaterThan(joinRoomIndex);
     expect(registerIndex).toBeGreaterThan(connectIndex);
     expect(script).toContain("token: accessToken,");
-    expect(script).toContain("nickname: loggedInUser.nickname,");
+    expect(script).not.toContain("nickname: loggedInUser.nickname,");
     expect(script).toContain("room_id: roomId,");
   });
 

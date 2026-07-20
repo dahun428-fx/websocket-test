@@ -108,7 +108,7 @@ async function main() {
     let silentClient;
 
     try {
-        serverProcess = spawn(process.execPath, [path.join(projectRoot, "dist/server.js")], {
+    serverProcess = spawn(process.execPath, [path.join(projectRoot, "dist/main.js")], {
             cwd: tempDirectory,
             env: {
                 ...process.env,

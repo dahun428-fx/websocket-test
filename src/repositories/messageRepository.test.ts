@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { closeDatabase, initializeDatabase } from "../database/database";
-import { messageRepository } from "./messageRepository";
+import { openDatabase, type DatabaseConnection } from "../database/database";
+import { createMessageRepository, type MessageRepository } from "./messageRepository";
 import type { NewChatMessage } from "../types/messages";
 
 function createMessage(index: number): NewChatMessage {
@@ -19,18 +19,21 @@ function createMessage(index: number): NewChatMessage {
 
 describe("messageRepository", () => {
     let testDirectory: string;
+    let database: DatabaseConnection;
+    let messageRepository: MessageRepository;
 
     beforeAll(async () => {
         testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
-        await initializeDatabase(path.join(testDirectory, "messages.db"));
+        database = await openDatabase(path.join(testDirectory, "messages.db"));
+        messageRepository = createMessageRepository(database);
     });
 
     beforeEach(async () => {
-        await messageRepository.clear();
+        await database.run("DELETE FROM messages");
     });
 
     afterAll(async () => {
-        await closeDatabase();
+        await database.close();
         await rm(testDirectory, { recursive: true, force: true });
     });
 

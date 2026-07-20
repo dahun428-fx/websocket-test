@@ -1,6 +1,4 @@
 import bcrypt from "bcrypt";
-import { error } from "node:console";
-import { unknown } from "zod";
 
 const password = process.argv[2];
 

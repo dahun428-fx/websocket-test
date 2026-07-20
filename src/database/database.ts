@@ -4,74 +4,60 @@ import path from "node:path";
 import sqlite3 from "sqlite3";
 import { open, type Database } from "sqlite";
 
-let database: Database<sqlite3.Database, sqlite3.Statement> | null = null;
+export type DatabaseConnection = Database<sqlite3.Database, sqlite3.Statement>;
 
 function getDefaultDatabasePath(): string {
   return path.join(process.cwd(), "data", "chat.db");
 }
 
-export async function initializeDatabase(
-  databasePath = getDefaultDatabasePath(),
-): Promise<Database<sqlite3.Database, sqlite3.Statement>> {
-  if (database) {
-    return database;
-  }
+async function initializeSchema(database: DatabaseConnection): Promise<void> {
+  await database.exec("PRAGMA foreign_keys = ON");
+  await database.exec("BEGIN IMMEDIATE");
 
-  await fs.mkdir(path.dirname(databasePath), { recursive: true });
-
-  database = await open({
-    filename: databasePath,
-    driver: sqlite3.Database,
-  });
-
-  await database.exec(`
-    PRAGMA foreign_keys = ON;
-  `);
-
-  await database.exec(`
-    CREATE TABLE IF NOT EXISTS users (
+  try {
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         nickname TEXT NOT NULL,
         password_hash TEXT NOT NULL,
         created_at TEXT NOT NULL
-    )
-  `);
-
-  await database.exec(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      room_id TEXT NOT NULL,
-      nickname TEXT NOT NULL,
-      message TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-  `);
-
-  await database.exec(`
-    CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages (room_id, id);
-  `);
-
-  console.log(`SQLite 데이터베이스 초기화 완료: ${databasePath}`);
-
-  return database;
+      )
+    `);
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id TEXT NOT NULL,
+        nickname TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await database.exec(`
+      CREATE INDEX IF NOT EXISTS idx_messages_room_id
+      ON messages (room_id, id)
+    `);
+    await database.exec("COMMIT");
+  } catch (error) {
+    await database.exec("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
 }
 
-export function getDatabase(): Database<sqlite3.Database, sqlite3.Statement> {
-  if (!database) {
-    throw new Error(
-      "Database has not been initialized. Call initializeDatabase() first.",
-    );
+export async function openDatabase(
+  databasePath = getDefaultDatabasePath(),
+): Promise<DatabaseConnection> {
+  await fs.mkdir(path.dirname(databasePath), { recursive: true });
+
+  const database = await open({
+    filename: databasePath,
+    driver: sqlite3.Database,
+  });
+
+  try {
+    await initializeSchema(database);
+    return database;
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
   }
-
-  return database;
-}
-
-export async function closeDatabase(): Promise<void> {
-  if (!database) {
-    return;
-  }
-
-  await database.close();
-  database = null;
-  console.log("SQLite 데이터베이스 연결 종료");
 }

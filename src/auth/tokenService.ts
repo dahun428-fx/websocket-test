@@ -1,6 +1,9 @@
 import jwt from "jsonwebtoken";
 
-import type { AuthTokenPayload } from "../types/auth";
+export interface AuthTokenPayload {
+  sub: string;
+  nickname: string;
+}
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -14,7 +17,7 @@ function getJwtSecret(): string {
 
 export function createAccessToken(
   userId: string,
-  nickname?: string,
+  nickname: string,
 ): string {
   const payload: AuthTokenPayload = {
     sub: userId,
@@ -32,14 +35,14 @@ export function verifyAccessToken(token: string): AuthTokenPayload {
   if (
     typeof decoded !== "object" ||
     decoded === null ||
-    typeof decoded.sub !== "string"
+    typeof decoded.sub !== "string" ||
+    typeof decoded.nickname !== "string"
   ) {
     throw new Error("올바르지 않은 인증 토큰입니다.");
   }
 
   return {
     sub: decoded.sub,
-    nickname:
-      typeof decoded.nickname === "string" ? decoded.nickname : undefined,
+    nickname: decoded.nickname,
   };
 }

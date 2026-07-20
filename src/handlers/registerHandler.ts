@@ -1,77 +1,88 @@
 import { TokenExpiredError } from "jsonwebtoken";
 
 import { verifyAccessToken } from "../auth/tokenService";
-import type { AuthTokenPayload } from "../types/auth";
-import type { RegisterHandler } from "../types/handler";
+import type { RegisterMessage } from "../types/messages";
+import type { RoomService } from "../service/roomService";
+import type { ChatWebSocket } from "../types/websocket";
+import type { SendError, SendJson } from "../types/handler";
 
-export const registerHandler: RegisterHandler = {
-  type: "register",
-  handle: async (ws, data, context) => {
-    const {
-      roomService,
-      sendJson,
-      sendError,
-      sendRoomHistory,
-      createTimestamp,
-    } = context;
+export interface RegisterHandlerDependencies {
+  roomService: RoomService;
+  sendJson: SendJson;
+  sendError: SendError;
+  sendRoomHistory(socket: ChatWebSocket, roomId: string): Promise<void>;
+  createTimestamp(): string;
+}
 
-    if (ws.userId || ws.nickname || ws.room_id) {
-      await sendError(ws, "ALREADY_REGISTERED");
+export function createRegisterHandler(dependencies: RegisterHandlerDependencies) {
+  const { roomService, sendJson, sendError, sendRoomHistory, createTimestamp } = dependencies;
+
+  return async function handleRegister(
+    socket: ChatWebSocket,
+    message: RegisterMessage,
+  ): Promise<boolean> {
+    if (socket.userId || socket.nickname || socket.room_id) {
+      await sendError(socket, "ALREADY_REGISTERED");
       return false;
     }
 
-    let tokenPayload: AuthTokenPayload;
-
+    let tokenPayload;
     try {
-      tokenPayload = verifyAccessToken(data.token);
+      tokenPayload = verifyAccessToken(message.token);
     } catch (error) {
       if (error instanceof TokenExpiredError) {
-        await sendError(ws, "ACCESS_TOKEN_EXPIRED");
+        await sendError(socket, "ACCESS_TOKEN_EXPIRED");
+        return false;
+      }
+      await sendError(socket, "INVALID_ACCESS_TOKEN");
+      return false;
+    }
+
+    const nickname = tokenPayload.nickname?.trim();
+    if (!nickname) {
+      await sendError(socket, "INVALID_ACCESS_TOKEN");
+      return false;
+    }
+
+    const roomId = roomService.join(socket, message.room_id);
+    socket.userId = tokenPayload.sub;
+    socket.nickname = nickname;
+
+    try {
+      const roomConnectionCount = roomService.getConnectionCount(roomId);
+      const roomUserCount = roomService.getUserCount(roomId);
+
+      await sendJson(socket, {
+        type: "register-success",
+        userId: tokenPayload.sub,
+        nickname,
+        room_id: roomId,
+        roomConnectionCount,
+        roomUserCount,
+        message: `${roomId}방에 ${nickname} 닉네임으로 입장했습니다.`,
+        createdAt: createTimestamp(),
+      });
+      await sendRoomHistory(socket, roomId);
+
+      if (socket.isClosed || socket.room_id !== roomId) {
         return false;
       }
 
-      console.error("JWT 검증 실패:", error);
-      await sendError(ws, "INVALID_ACCESS_TOKEN");
-      return false;
+      roomService.broadcastToRoom(roomId, {
+        type: "notification",
+        room_id: roomId,
+        message: `${nickname}님이 입장했습니다.`,
+        roomConnectionCount,
+        roomUserCount,
+        createdAt: createTimestamp(),
+      });
+      return true;
+    } catch (error) {
+      roomService.leave(socket);
+      socket.userId = null;
+      socket.nickname = null;
+      socket.close(1011, "Registration failed");
+      throw error;
     }
-
-    const userId = tokenPayload.sub;
-    const nickname = tokenPayload.nickname?.trim() || data.nickname;
-    const joinedRoomId = roomService.join(ws, data.room_id);
-
-    ws.userId = userId;
-    ws.nickname = nickname;
-
-    const roomConnectionCount = roomService.getConnectionCount(joinedRoomId);
-    const roomUserCount = roomService.getUserCount(joinedRoomId);
-
-    console.log(`등록 완료: nickname=${ws.nickname}, room_id=${joinedRoomId}`);
-    console.log(`${joinedRoomId}방 연결 수:`, roomConnectionCount);
-
-    await sendJson(ws, {
-      type: "register-success",
-      userId,
-      nickname,
-      room_id: joinedRoomId,
-      roomConnectionCount,
-      roomUserCount,
-      message: `${joinedRoomId}방에 ${nickname} 닉네임으로 입장했습니다.`,
-      createdAt: createTimestamp(),
-    });
-    await sendRoomHistory(ws, joinedRoomId);
-
-    if (ws.nickname !== nickname || ws.room_id !== joinedRoomId) {
-      return false;
-    }
-
-    roomService.broadcastToRoom(joinedRoomId, {
-      type: "notification",
-      room_id: joinedRoomId,
-      message: `${nickname}님이 입장했습니다.`,
-      roomConnectionCount,
-      roomUserCount,
-      createdAt: createTimestamp(),
-    });
-    return true;
-  },
-};
+  };
+}

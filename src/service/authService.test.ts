@@ -22,7 +22,6 @@ function createUserRepository(): UserRepository {
       };
     }),
     create: vi.fn(),
-    existsById: vi.fn(),
   };
 }
 
@@ -53,9 +52,12 @@ describe("authService", () => {
   });
 
   it("returns null for an unknown user", async () => {
-    const authService = createAuthService(createUserRepository());
+    const verifyPassword = vi.fn(async () => false);
+    const authService = createAuthService(createUserRepository(), { verifyPassword });
 
     await expect(authService.login("unknown-user", "test1234")).resolves.toBeNull();
+    expect(verifyPassword).toHaveBeenCalledOnce();
+    expect(verifyPassword).toHaveBeenCalledWith("test1234", expect.stringMatching(/^\$2b\$12\$/));
   });
 
   it("returns null for an invalid password", async () => {

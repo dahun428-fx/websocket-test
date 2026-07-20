@@ -3,11 +3,6 @@ import { z } from "zod";
 export const registerMessageSchema = z.object({
   type: z.literal("register"),
   token: z.string().trim().min(1, "인증 토큰이 필요합니다."),
-  nickname: z
-    .string()
-    .trim()
-    .min(1, "닉네임을 입력하세요.")
-    .max(20, "닉네임은 20자 이하로 입력하세요."),
   room_id: z
     .string()
     .trim()
