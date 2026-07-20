@@ -1,808 +1,1639 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 
 <head>
     <meta charset="UTF-8" />
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebSocket 채팅</title>
+
+    <title>WebSocket Chat</title>
 
     <style>
+        :root {
+            color-scheme: light;
+            font-family:
+                Inter, Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                sans-serif;
+            line-height: 1.5;
+            font-weight: 400;
+            background: #f4f6f8;
+            color: #1f2937;
+        }
+
         * {
             box-sizing: border-box;
         }
 
         body {
-            max-width: 760px;
-            margin: 0 auto;
-            padding: 24px;
-            font-family:
-                -apple-system,
-                BlinkMacSystemFont,
-                "Segoe UI",
-                sans-serif;
-            color: #222;
-            background: #fafafa;
+            margin: 0;
+            min-width: 320px;
+            min-height: 100vh;
+            background: #f4f6f8;
         }
 
-        h1,
-        h2 {
-            margin-top: 0;
-        }
-
-        h1 {
-            font-size: 28px;
-        }
-
-        h2 {
-            font-size: 18px;
-        }
-
-        .section {
-            margin-bottom: 18px;
-            padding: 16px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            background: #fff;
-        }
-
-        .field {
-            margin-bottom: 12px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 6px;
-            font-weight: 600;
-        }
-
+        button,
         input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 14px;
-            background: #fff;
-        }
-
-        input:disabled {
-            background: #f3f3f3;
+            font: inherit;
         }
 
         button {
-            min-height: 40px;
-            padding: 10px 14px;
-            border: 1px solid #bbb;
-            border-radius: 6px;
-            background: white;
             cursor: pointer;
-            font-weight: 600;
         }
 
         button:disabled {
             cursor: not-allowed;
-            opacity: 0.5;
+            opacity: 0.55;
         }
 
-        .button-group {
-            display: flex;
-            flex-wrap: wrap;
+        .app {
+            width: min(100% - 32px, 760px);
+            margin: 0 auto;
+            padding: 32px 0;
+        }
+
+        .app-header {
+            margin-bottom: 24px;
+        }
+
+        .app-title {
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.25;
+        }
+
+        .app-description {
+            margin: 8px 0 0;
+            color: #6b7280;
+        }
+
+        .card {
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: #ffffff;
+            box-shadow: 0 8px 24px rgb(15 23 42 / 6%);
+        }
+
+        .card-body {
+            padding: 24px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .auth-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 8px;
+            margin-bottom: 24px;
+            padding: 4px;
+            border-radius: 10px;
+            background: #f3f4f6;
         }
 
-        .status {
-            margin: 12px 0 0;
+        .auth-tab {
+            border: 0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            background: transparent;
+            color: #6b7280;
             font-weight: 600;
         }
 
-        .room-info {
-            display: none;
-            margin-top: 12px;
-            padding: 12px;
-            border-radius: 6px;
-            background: #f5f5f5;
+        .auth-tab.active {
+            background: #ffffff;
+            color: #111827;
+            box-shadow: 0 2px 8px rgb(15 23 42 / 8%);
         }
 
-        .room-info>div+div {
-            margin-top: 6px;
+        .form {
+            display: grid;
+            gap: 16px;
         }
 
-        .history-actions {
-            margin-bottom: 12px;
+        .form-group {
+            display: grid;
+            gap: 7px;
         }
 
-        #messages {
-            height: 360px;
-            margin: 0;
-            padding: 12px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            list-style: none;
+        .form-label {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .form-input {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 9px;
+            padding: 11px 12px;
+            outline: none;
+            background: #ffffff;
+        }
+
+        .form-input:focus {
+            border-color: #64748b;
+            box-shadow: 0 0 0 3px rgb(100 116 139 / 12%);
+        }
+
+        .primary-button {
+            border: 0;
+            border-radius: 9px;
+            padding: 11px 16px;
+            background: #111827;
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        .secondary-button {
+            border: 1px solid #d1d5db;
+            border-radius: 9px;
+            padding: 10px 14px;
+            background: #ffffff;
+            color: #374151;
+            font-weight: 600;
+        }
+
+        .danger-button {
+            border: 1px solid #fecaca;
+            border-radius: 9px;
+            padding: 9px 12px;
             background: #fff;
+            color: #b91c1c;
+            font-weight: 600;
         }
 
-        #messages li {
+        .status-message {
+            min-height: 22px;
+            margin: 16px 0 0;
+            font-size: 14px;
+            color: #4b5563;
+        }
+
+        .status-message.error {
+            color: #b91c1c;
+        }
+
+        .status-message.success {
+            color: #047857;
+        }
+
+        .chat-header {
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 8px;
-            padding: 8px 10px;
-            border-radius: 6px;
-            background: #f7f7f7;
-            word-break: break-word;
+            gap: 16px;
+            padding: 18px 20px;
+            border-bottom: 1px solid #e5e7eb;
         }
 
-        #messages li.system {
-            background: #eef3ff;
+        .user-information {
+            min-width: 0;
         }
 
-        #messages li.error {
-            background: #fff0f0;
+        .user-name {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 700;
         }
 
-        #messages .message-text {
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin: 4px 0 0;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #9ca3af;
+        }
+
+        .status-dot.connected {
+            background: #10b981;
+        }
+
+        .status-dot.connecting {
+            background: #f59e0b;
+        }
+
+        .room-panel {
+            display: flex;
+            gap: 10px;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .room-panel .form-input {
             flex: 1;
         }
 
-        #messages .time {
-            flex-shrink: 0;
-            color: #777;
+        .room-information {
+            padding: 10px 20px;
+            border-bottom: 1px solid #e5e7eb;
+            background: #f9fafb;
+            color: #4b5563;
+            font-size: 13px;
+        }
+
+        .message-area {
+            height: 440px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+
+        .history-button-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        .history-button {
+            border: 1px solid #d1d5db;
+            border-radius: 999px;
+            padding: 7px 13px;
+            background: #ffffff;
+            color: #4b5563;
+            font-size: 13px;
+        }
+
+        .message-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .message-row {
+            display: flex;
+        }
+
+        .message-row.mine {
+            justify-content: flex-end;
+        }
+
+        .message-bubble {
+            max-width: min(75%, 520px);
+        }
+
+        .message-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+            color: #6b7280;
             font-size: 12px;
         }
 
-        .message-form {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
+        .message-row.mine .message-meta {
+            justify-content: flex-end;
         }
 
-        .message-form input {
+        .message-content {
+            padding: 10px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #ffffff;
+            color: #1f2937;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        .message-row.mine .message-content {
+            border-color: #111827;
+            background: #111827;
+            color: #ffffff;
+        }
+
+        .system-message {
+            padding: 5px 12px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        .chat-form {
+            display: flex;
+            gap: 10px;
+            padding: 16px 20px 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .chat-form .form-input {
             flex: 1;
         }
 
         @media (max-width: 560px) {
-            body {
-                padding: 16px;
+            .app {
+                width: min(100% - 20px, 760px);
+                padding: 16px 0;
             }
 
-            .message-form {
+            .card-body {
+                padding: 18px;
+            }
+
+            .room-panel,
+            .chat-form {
                 flex-direction: column;
             }
 
-            .message-form button {
-                width: 100%;
+            .message-area {
+                height: 52vh;
+                min-height: 360px;
+            }
+
+            .message-bubble {
+                max-width: 86%;
             }
         }
     </style>
 </head>
 
 <body>
-    <h1>WebSocket 채팅</h1>
+    <main class="app">
+        <header class="app-header">
+            <h1 class="app-title">WebSocket Chat</h1>
 
-    <section id="loginSection" class="section">
-        <h2>로그인</h2>
+            <p class="app-description">
+                JWT 인증 기반 실시간 채팅 예제입니다.
+            </p>
+        </header>
 
-        <div class="field">
-            <label for="loginUserIdInput">사용자 ID</label>
-            <input id="loginUserIdInput" type="text" value="user-100" placeholder="사용자 ID" />
-        </div>
+        <section id="authSection" class="card">
+            <div class="card-body">
+                <div class="auth-tabs">
+                    <button id="loginTabButton" class="auth-tab active" type="button">
+                        로그인
+                    </button>
 
-        <div class="field">
-            <label for="passwordInput">비밀번호</label>
-                <input id="passwordInput" type="password" placeholder="비밀번호" />
-        </div>
+                    <button id="signupTabButton" class="auth-tab" type="button">
+                        회원가입
+                    </button>
+                </div>
 
-        <div class="button-group">
-            <button id="loginButton" type="button">로그인</button>
-            <button id="logoutButton" type="button" disabled>로그아웃</button>
-        </div>
+                <form id="loginForm" class="form">
+                    <div class="form-group">
+                        <label class="form-label" for="loginUserIdInput">
+                            사용자 ID
+                        </label>
 
-        <p id="loginStatus" class="status">로그인이 필요합니다.</p>
-    </section>
+                        <input id="loginUserIdInput" class="form-input" name="userId" type="text"
+                            autocomplete="username" placeholder="user-100" required />
+                    </div>
 
-    <section id="roomSection" class="section">
-        <h2>채팅방 입장</h2>
+                    <div class="form-group">
+                        <label class="form-label" for="loginPasswordInput">
+                            비밀번호
+                        </label>
 
-        <div class="field">
-            <label for="roomInput">방 ID</label>
-            <input id="roomInput" type="text" value="room-1" placeholder="예: room-1" disabled />
-        </div>
+                        <input id="loginPasswordInput" class="form-input" name="password" type="password"
+                            autocomplete="current-password" placeholder="비밀번호를 입력하세요" required />
+                    </div>
 
-        <button id="joinRoomButton" type="button" disabled>채팅방 입장</button>
+                    <button id="loginSubmitButton" class="primary-button" type="submit">
+                        로그인
+                    </button>
+                </form>
 
-        <div id="roomInfo" class="room-info">
-            <div>
-                사용자 ID:
-                <strong id="currentUserId">-</strong>
+                <form id="signupForm" class="form hidden">
+                    <div class="form-group">
+                        <label class="form-label" for="signupUserIdInput">
+                            사용자 ID
+                        </label>
+
+                        <input id="signupUserIdInput" class="form-input" name="userId" type="text"
+                            autocomplete="username" minlength="4" maxlength="30" pattern="[A-Za-z0-9_-]+"
+                            placeholder="영문, 숫자, 밑줄, 하이픈" required />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="signupNicknameInput">
+                            닉네임
+                        </label>
+
+                        <input id="signupNicknameInput" class="form-input" name="nickname" type="text"
+                            autocomplete="nickname" maxlength="20" placeholder="채팅에서 사용할 이름" required />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="signupPasswordInput">
+                            비밀번호
+                        </label>
+
+                        <input id="signupPasswordInput" class="form-input" name="password" type="password"
+                            autocomplete="new-password" minlength="8" maxlength="100" placeholder="8자 이상 입력하세요"
+                            required />
+                    </div>
+
+                    <button id="signupSubmitButton" class="primary-button" type="submit">
+                        회원가입
+                    </button>
+                </form>
+
+                <p id="authStatusMessage" class="status-message" role="status" aria-live="polite"></p>
             </div>
-            <div>
-                현재 방:
-                <strong id="currentRoom">-</strong>
-            </div>
-            <div>
-                닉네임:
-                <strong id="currentNickname">-</strong>
-            </div>
-            <div>
-                연결 수:
-                <strong id="roomConnectionCount">0</strong>
-            </div>
-            <div>
-                실제 사용자 수:
-                <strong id="roomUserCount">0</strong>
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="section">
-        <h2>채팅</h2>
+        <section id="chatSection" class="card hidden">
+            <header class="chat-header">
+                <div class="user-information">
+                    <p id="currentUserName" class="user-name"></p>
 
-        <div class="history-actions">
-            <button id="loadPreviousBtn" type="button" disabled>이전 메시지 불러오기</button>
-        </div>
+                    <p class="connection-status">
+                        <span id="connectionStatusDot" class="status-dot"></span>
 
-        <ul id="messages"></ul>
+                        <span id="connectionStatusText">
+                            연결되지 않음
+                        </span>
+                    </p>
+                </div>
 
-        <div class="message-form">
-            <input id="messageInput" type="text" maxlength="1000" placeholder="메시지를 입력하세요." disabled />
-            <button id="sendBtn" type="button" disabled>전송</button>
-        </div>
-    </section>
+                <button id="logoutButton" class="danger-button" type="button">
+                    로그아웃
+                </button>
+            </header>
+
+            <div class="room-panel">
+                <input id="roomIdInput" class="form-input" type="text" maxlength="50" placeholder="채팅방 ID를 입력하세요"
+                    value="room-1" />
+
+                <button id="connectButton" class="primary-button" type="button">
+                    방 입장
+                </button>
+
+                <button id="disconnectButton" class="secondary-button" type="button" disabled>
+                    연결 종료
+                </button>
+            </div>
+
+            <div id="roomInformation" class="room-information">
+                참여 중인 채팅방이 없습니다.
+            </div>
+
+            <div id="messageArea" class="message-area">
+                <div id="historyButtonWrapper" class="history-button-wrapper hidden">
+                    <button id="historyButton" class="history-button" type="button">
+                        이전 메시지 불러오기
+                    </button>
+                </div>
+
+                <div id="messageList" class="message-list"></div>
+            </div>
+
+            <form id="chatForm" class="chat-form">
+                <input id="messageInput" class="form-input" type="text" maxlength="1000" placeholder="메시지를 입력하세요"
+                    autocomplete="off" disabled />
+
+                <button id="sendButton" class="primary-button" type="submit" disabled>
+                    전송
+                </button>
+            </form>
+
+            <p id="chatStatusMessage" class="status-message" role="status" aria-live="polite"
+                style="padding: 0 20px 16px"></p>
+        </section>
+    </main>
 
     <script>
-        let socket = null;
+        (() => {
+            "use strict";
 
-        let accessToken = null;
-        let loggedInUser = null;
-        let pendingRoomId = null;
-        let joinedRoomId = null;
+            /*
+             * 서버 주소
+             *
+             * 같은 Node 서버에서 index.html과 API를 제공한다면 현재 origin을 사용합니다.
+             * HTTP 서버가 3010 포트에서 실행된다면:
+             *
+             *   http://localhost:3010
+             *   ws://localhost:3010
+             */
+            const HTTP_BASE_URL = window.location.origin;
 
-        let oldestMessageId = null;
-        let hasMoreHistory = false;
-        let isHistoryLoading = false;
+            const WEBSOCKET_URL =
+                window.location.protocol === "https:"
+                    ? `wss://${window.location.host}`
+                    : `ws://${window.location.host}`;
 
-        const loginUserIdInput = document.getElementById("loginUserIdInput");
-        const passwordInput = document.getElementById("passwordInput");
-        const loginButton = document.getElementById("loginButton");
-        const logoutButton = document.getElementById("logoutButton");
-        const loginStatus = document.getElementById("loginStatus");
-        const roomInput = document.getElementById("roomInput");
-        const joinRoomButton = document.getElementById("joinRoomButton");
-        const roomInfo = document.getElementById("roomInfo");
-        const currentUserId = document.getElementById("currentUserId");
-        const currentRoom = document.getElementById("currentRoom");
-        const currentNickname = document.getElementById("currentNickname");
-        const roomConnectionCount = document.getElementById("roomConnectionCount");
-        const roomUserCount = document.getElementById("roomUserCount");
-        const loadPreviousBtn = document.getElementById("loadPreviousBtn");
-        const messages = document.getElementById("messages");
-        const messageInput = document.getElementById("messageInput");
-        const sendBtn = document.getElementById("sendBtn");
+            const STORAGE_KEYS = {
+                accessToken: "chat.accessToken",
+                user: "chat.user",
+            };
 
-        function formatTime(createdAt) {
-            if (!createdAt) {
-                return "";
+            const HISTORY_PAGE_SIZE = 30;
+
+            const elements = {
+                authSection: document.querySelector("#authSection"),
+                chatSection: document.querySelector("#chatSection"),
+
+                loginTabButton: document.querySelector("#loginTabButton"),
+                signupTabButton: document.querySelector("#signupTabButton"),
+
+                loginForm: document.querySelector("#loginForm"),
+                loginUserIdInput: document.querySelector("#loginUserIdInput"),
+                loginPasswordInput: document.querySelector("#loginPasswordInput"),
+                loginSubmitButton: document.querySelector("#loginSubmitButton"),
+
+                signupForm: document.querySelector("#signupForm"),
+                signupUserIdInput: document.querySelector("#signupUserIdInput"),
+                signupNicknameInput: document.querySelector(
+                    "#signupNicknameInput",
+                ),
+                signupPasswordInput: document.querySelector(
+                    "#signupPasswordInput",
+                ),
+                signupSubmitButton: document.querySelector(
+                    "#signupSubmitButton",
+                ),
+
+                authStatusMessage: document.querySelector(
+                    "#authStatusMessage",
+                ),
+
+                currentUserName: document.querySelector("#currentUserName"),
+                connectionStatusDot: document.querySelector(
+                    "#connectionStatusDot",
+                ),
+                connectionStatusText: document.querySelector(
+                    "#connectionStatusText",
+                ),
+
+                logoutButton: document.querySelector("#logoutButton"),
+
+                roomIdInput: document.querySelector("#roomIdInput"),
+                connectButton: document.querySelector("#connectButton"),
+                disconnectButton: document.querySelector(
+                    "#disconnectButton",
+                ),
+                roomInformation: document.querySelector("#roomInformation"),
+
+                messageArea: document.querySelector("#messageArea"),
+                messageList: document.querySelector("#messageList"),
+
+                historyButtonWrapper: document.querySelector(
+                    "#historyButtonWrapper",
+                ),
+                historyButton: document.querySelector("#historyButton"),
+
+                chatForm: document.querySelector("#chatForm"),
+                messageInput: document.querySelector("#messageInput"),
+                sendButton: document.querySelector("#sendButton"),
+
+                chatStatusMessage: document.querySelector(
+                    "#chatStatusMessage",
+                ),
+            };
+
+            let accessToken = null;
+            let currentUser = null;
+            let currentRoomId = null;
+            let socket = null;
+
+            let isRegistered = false;
+            let oldestMessageId = null;
+            let hasMoreHistory = false;
+            let historyLoading = false;
+            let intentionalClose = false;
+
+            function setStatusMessage(element, message, type = "normal") {
+                element.textContent = message;
+                element.classList.remove("error", "success");
+
+                if (type === "error") {
+                    element.classList.add("error");
+                }
+
+                if (type === "success") {
+                    element.classList.add("success");
+                }
             }
 
-            const date = new Date(createdAt);
-
-            if (Number.isNaN(date.getTime())) {
-                return createdAt;
-            }
-
-            return date.toLocaleTimeString("ko-KR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-            });
-        }
-
-        function createMessageElement(text, className = "", createdAt = null) {
-            const li = document.createElement("li");
-
-            if (className) {
-                li.className = className;
-            }
-
-            const textElement = document.createElement("span");
-            textElement.className = "message-text";
-            textElement.textContent = text;
-            li.appendChild(textElement);
-
-            if (createdAt) {
-                const timeElement = document.createElement("span");
-                timeElement.className = "time";
-                timeElement.textContent = formatTime(createdAt);
-                li.appendChild(timeElement);
-            }
-
-            return li;
-        }
-
-        function addMessage(text, className = "", createdAt = null) {
-            const li = createMessageElement(text, className, createdAt);
-
-            messages.appendChild(li);
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        function addChatMessage(chatMessage) {
-            addMessage(
-                `${chatMessage.nickname}: ${chatMessage.message}`,
-                "",
-                chatMessage.createdAt,
-            );
-        }
-
-        function prependChatMessages(chatMessages) {
-            if (!Array.isArray(chatMessages) || chatMessages.length === 0) {
-                return;
-            }
-
-            const previousScrollHeight = messages.scrollHeight;
-            const fragment = document.createDocumentFragment();
-
-            chatMessages.forEach((chatMessage) => {
-                const li = createMessageElement(
-                    `${chatMessage.nickname}: ${chatMessage.message}`,
-                    "",
-                    chatMessage.createdAt,
+            function setConnectionStatus(status) {
+                elements.connectionStatusDot.classList.remove(
+                    "connected",
+                    "connecting",
                 );
-                fragment.appendChild(li);
-            });
 
-            messages.insertBefore(fragment, messages.firstChild);
-            messages.scrollTop = messages.scrollHeight - previousScrollHeight;
-        }
+                switch (status) {
+                    case "connecting":
+                        elements.connectionStatusDot.classList.add("connecting");
+                        elements.connectionStatusText.textContent = "연결 중";
+                        break;
 
-        function updateOldestMessageId(chatMessages) {
-            if (!Array.isArray(chatMessages) || chatMessages.length === 0) {
-                return;
+                    case "connected":
+                        elements.connectionStatusDot.classList.add("connected");
+                        elements.connectionStatusText.textContent = "연결됨";
+                        break;
+
+                    default:
+                        elements.connectionStatusText.textContent =
+                            "연결되지 않음";
+                }
             }
 
-            const validIds = chatMessages
-                .map((chatMessage) => chatMessage.id)
-                .filter((id) => Number.isInteger(id));
+            function setAuthLoading(loading) {
+                elements.loginSubmitButton.disabled = loading;
+                elements.signupSubmitButton.disabled = loading;
 
-            if (validIds.length === 0) {
-                return;
+                elements.loginSubmitButton.textContent = loading
+                    ? "처리 중..."
+                    : "로그인";
+
+                elements.signupSubmitButton.textContent = loading
+                    ? "처리 중..."
+                    : "회원가입";
             }
 
-            const minimumId = Math.min(...validIds);
+            function setChatEnabled(enabled) {
+                elements.messageInput.disabled = !enabled;
+                elements.sendButton.disabled = !enabled;
 
-            if (oldestMessageId === null || minimumId < oldestMessageId) {
-                oldestMessageId = minimumId;
-            }
-        }
-
-        function updateRoomCounts(connectionCount, userCount) {
-            if (typeof connectionCount === "number") {
-                roomConnectionCount.textContent = String(connectionCount);
+                if (enabled) {
+                    elements.messageInput.focus();
+                }
             }
 
-            if (typeof userCount === "number") {
-                roomUserCount.textContent = String(userCount);
-            }
-        }
+            function updateConnectionButtons() {
+                const connecting =
+                    socket && socket.readyState === WebSocket.CONNECTING;
 
-        function resetRoomState() {
-            pendingRoomId = null;
-            joinedRoomId = null;
-            oldestMessageId = null;
-            hasMoreHistory = false;
-            isHistoryLoading = false;
-            roomInfo.style.display = "none";
-            currentUserId.textContent = "-";
-            currentRoom.textContent = "-";
-            currentNickname.textContent = "-";
-            updateRoomCounts(0, 0);
-            messageInput.disabled = true;
-            sendBtn.disabled = true;
-            loadPreviousBtn.disabled = true;
-        }
+                const connected =
+                    socket && socket.readyState === WebSocket.OPEN;
 
-        async function login() {
-            const userId = loginUserIdInput.value.trim();
-            const password = passwordInput.value;
+                elements.connectButton.disabled = Boolean(
+                    connecting || connected,
+                );
 
-            if (!userId) {
-                loginStatus.textContent = "사용자 ID를 입력하세요.";
-                loginUserIdInput.focus();
-                return;
+                elements.disconnectButton.disabled = !Boolean(
+                    connecting || connected,
+                );
+
+                elements.roomIdInput.disabled = Boolean(
+                    connecting || connected,
+                );
             }
 
-            if (!password) {
-                loginStatus.textContent = "비밀번호를 입력하세요.";
-                passwordInput.focus();
-                return;
+            function switchAuthMode(mode) {
+                const loginMode = mode === "login";
+
+                elements.loginTabButton.classList.toggle(
+                    "active",
+                    loginMode,
+                );
+
+                elements.signupTabButton.classList.toggle(
+                    "active",
+                    !loginMode,
+                );
+
+                elements.loginForm.classList.toggle(
+                    "hidden",
+                    !loginMode,
+                );
+
+                elements.signupForm.classList.toggle(
+                    "hidden",
+                    loginMode,
+                );
+
+                setStatusMessage(elements.authStatusMessage, "");
+
+                if (loginMode) {
+                    elements.loginUserIdInput.focus();
+                } else {
+                    elements.signupUserIdInput.focus();
+                }
             }
 
-            loginButton.disabled = true;
-            loginStatus.textContent = "로그인 중입니다.";
+            function saveAuthSession(token, user) {
+                accessToken = token;
+                currentUser = user;
 
-            try {
-                const response = await fetch("/login", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
+                localStorage.setItem(STORAGE_KEYS.accessToken, token);
+                localStorage.setItem(
+                    STORAGE_KEYS.user,
+                    JSON.stringify(user),
+                );
+            }
+
+            function restoreAuthSession() {
+                const storedToken = localStorage.getItem(
+                    STORAGE_KEYS.accessToken,
+                );
+
+                const storedUser = localStorage.getItem(
+                    STORAGE_KEYS.user,
+                );
+
+                if (!storedToken || !storedUser) {
+                    return false;
+                }
+
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+
+                    if (
+                        typeof parsedUser?.userId !== "string" ||
+                        typeof parsedUser?.nickname !== "string"
+                    ) {
+                        throw new Error("Invalid stored user");
+                    }
+
+                    accessToken = storedToken;
+                    currentUser = parsedUser;
+
+                    return true;
+                } catch {
+                    clearAuthSession();
+                    return false;
+                }
+            }
+
+            function clearAuthSession() {
+                accessToken = null;
+                currentUser = null;
+
+                localStorage.removeItem(STORAGE_KEYS.accessToken);
+                localStorage.removeItem(STORAGE_KEYS.user);
+            }
+
+            function showAuthScreen() {
+                elements.authSection.classList.remove("hidden");
+                elements.chatSection.classList.add("hidden");
+
+                elements.currentUserName.textContent = "";
+                setStatusMessage(elements.chatStatusMessage, "");
+            }
+
+            function showChatScreen() {
+                elements.authSection.classList.add("hidden");
+                elements.chatSection.classList.remove("hidden");
+
+                elements.currentUserName.textContent = currentUser
+                    ? `${currentUser.nickname} (${currentUser.userId})`
+                    : "";
+
+                setStatusMessage(elements.authStatusMessage, "");
+            }
+
+            async function requestJson(pathname, options = {}) {
+                const response = await fetch(
+                    `${HTTP_BASE_URL}${pathname}`,
+                    {
+                        ...options,
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(options.headers ?? {}),
+                        },
                     },
+                );
+
+                const contentType =
+                    response.headers.get("content-type") ?? "";
+
+                let body = null;
+
+                if (contentType.includes("application/json")) {
+                    body = await response.json();
+                } else {
+                    const text = await response.text();
+                    body = text ? { message: text } : null;
+                }
+
+                if (!response.ok) {
+                    const error = new Error(
+                        body?.message ??
+                        `요청에 실패했습니다. (${response.status})`,
+                    );
+
+                    error.statusCode = response.status;
+                    error.code = body?.code;
+                    error.retryAfter =
+                        response.headers.get("retry-after");
+
+                    throw error;
+                }
+
+                return body;
+            }
+
+            async function login(userId, password) {
+                return requestJson("/login", {
+                    method: "POST",
                     body: JSON.stringify({
                         userId,
                         password,
                     }),
                 });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.message ?? "로그인에 실패했습니다.");
-                }
-
-                accessToken = data.accessToken;
-                loggedInUser = data.user;
-
-                loginStatus.textContent =
-                    `${loggedInUser.nickname}님으로 로그인했습니다.`;
-                loginUserIdInput.disabled = true;
-                passwordInput.disabled = true;
-                roomInput.disabled = false;
-                joinRoomButton.disabled = false;
-                logoutButton.disabled = false;
-            } catch (error) {
-                accessToken = null;
-                loggedInUser = null;
-                loginStatus.textContent =
-                    error instanceof Error
-                        ? error.message
-                        : "로그인에 실패했습니다.";
-            } finally {
-                loginButton.disabled = false;
             }
-        }
 
-        function connectWebSocket() {
-            return new Promise((resolve, reject) => {
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    resolve(socket);
-                    return;
-                }
+            async function signup(userId, nickname, password) {
+                return requestJson("/signup", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        userId,
+                        nickname,
+                        password,
+                    }),
+                });
+            }
 
-                if (socket && socket.readyState === WebSocket.CONNECTING) {
-                    socket.addEventListener("open", () => resolve(socket), {
-                        once: true,
-                    });
-                    socket.addEventListener(
-                        "error",
-                        () => reject(new Error("WebSocket 연결에 실패했습니다.")),
-                        { once: true },
+            function handleAuthenticationSuccess(result) {
+                if (
+                    !result ||
+                    typeof result.accessToken !== "string" ||
+                    typeof result.user?.userId !== "string" ||
+                    typeof result.user?.nickname !== "string"
+                ) {
+                    throw new Error(
+                        "인증 응답 형식이 올바르지 않습니다.",
                     );
+                }
+
+                saveAuthSession(result.accessToken, result.user);
+                showChatScreen();
+
+                setStatusMessage(
+                    elements.chatStatusMessage,
+                    "로그인되었습니다. 채팅방 ID를 입력하고 방에 입장하세요.",
+                    "success",
+                );
+
+                elements.roomIdInput.focus();
+            }
+
+            function sendSocketMessage(payload) {
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    throw new Error("WebSocket이 연결되지 않았습니다.");
+                }
+
+                socket.send(JSON.stringify(payload));
+            }
+
+            function connectToRoom(roomId) {
+                if (!accessToken || !currentUser) {
+                    setStatusMessage(
+                        elements.chatStatusMessage,
+                        "로그인이 필요합니다.",
+                        "error",
+                    );
+
                     return;
                 }
 
-                const protocol = location.protocol === "https:" ? "wss" : "ws";
-                socket = new WebSocket(`${protocol}://${location.host}`);
+                const normalizedRoomId = roomId.trim();
 
-                socket.addEventListener("open", () => resolve(socket), {
-                    once: true,
-                });
-                socket.addEventListener(
-                    "error",
-                    () => reject(new Error("WebSocket 연결에 실패했습니다.")),
-                    { once: true },
-                );
-                socket.addEventListener("message", handleSocketMessage);
-                socket.addEventListener("close", handleSocketClose);
-            });
-        }
+                if (!normalizedRoomId) {
+                    setStatusMessage(
+                        elements.chatStatusMessage,
+                        "채팅방 ID를 입력하세요.",
+                        "error",
+                    );
 
-        function sendJson(payload) {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                throw new Error("WebSocket이 연결되어 있지 않습니다.");
-            }
-
-            socket.send(JSON.stringify(payload));
-        }
-
-        async function joinRoom() {
-            if (!accessToken || !loggedInUser) {
-                addMessage("먼저 로그인하세요.", "error");
-                return;
-            }
-
-            const roomId = roomInput.value.trim();
-
-            if (!roomId) {
-                addMessage("방 ID를 입력하세요.", "error");
-                roomInput.focus();
-                return;
-            }
-
-            joinRoomButton.disabled = true;
-            pendingRoomId = roomId;
-
-            try {
-                await connectWebSocket();
-
-                sendJson({
-                    type: "register",
-                    token: accessToken,
-                    room_id: roomId,
-                });
-            } catch (error) {
-                pendingRoomId = null;
-                joinRoomButton.disabled = false;
-                addMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "채팅방 연결에 실패했습니다.",
-                    "error",
-                );
-            }
-        }
-
-        function handleSocketMessage(event) {
-            let data;
-
-            try {
-                data = JSON.parse(event.data);
-            } catch {
-                addMessage("서버 메시지를 해석하지 못했습니다.", "error");
-                return;
-            }
-
-            handleServerMessage(data);
-        }
-
-        function handleHistoryMessage(data) {
-            const chatMessages = Array.isArray(data.messages) ? data.messages : [];
-
-            updateOldestMessageId(chatMessages);
-            hasMoreHistory = data.hasMore === true;
-
-            if (isHistoryLoading) {
-                prependChatMessages(chatMessages);
-            } else {
-                chatMessages.forEach(addChatMessage);
-            }
-
-            isHistoryLoading = false;
-            loadPreviousBtn.disabled = !hasMoreHistory;
-        }
-
-        function handleServerError(data) {
-            addMessage(data.message, "error", data.createdAt);
-
-            if (
-                data.code === "INVALID_ACCESS_TOKEN" ||
-                data.code === "ACCESS_TOKEN_EXPIRED"
-            ) {
-                accessToken = null;
-                loggedInUser = null;
-                pendingRoomId = null;
-                loginUserIdInput.disabled = false;
-                passwordInput.disabled = false;
-                loginButton.disabled = false;
-                logoutButton.disabled = true;
-                roomInput.disabled = true;
-                joinRoomButton.disabled = true;
-                loginStatus.textContent =
-                    "로그인이 만료되었습니다. 다시 로그인하세요.";
-                resetRoomState();
-                socket?.close();
-                socket = null;
-                return;
-            }
-
-            if (pendingRoomId) {
-                pendingRoomId = null;
-                joinRoomButton.disabled = false;
-            }
-
-            if (isHistoryLoading) {
-                isHistoryLoading = false;
-                loadPreviousBtn.disabled = !hasMoreHistory;
-            }
-        }
-
-        function handleServerMessage(data) {
-            switch (data.type) {
-                case "connection": {
-                    addMessage(data.message, "system", data.createdAt);
-                    break;
+                    elements.roomIdInput.focus();
+                    return;
                 }
 
-                case "register-success": {
-                    pendingRoomId = null;
-                    joinedRoomId = data.room_id;
+                disconnectSocket();
+
+                currentRoomId = normalizedRoomId;
+                isRegistered = false;
+                oldestMessageId = null;
+                hasMoreHistory = false;
+                historyLoading = false;
+                intentionalClose = false;
+
+                clearMessages();
+                updateHistoryButton();
+                setChatEnabled(false);
+                setConnectionStatus("connecting");
+
+                elements.roomInformation.textContent =
+                    `${normalizedRoomId} 방에 연결 중입니다.`;
+
+                setStatusMessage(
+                    elements.chatStatusMessage,
+                    "서버에 연결하고 있습니다.",
+                );
+
+                socket = new WebSocket(WEBSOCKET_URL);
+                updateConnectionButtons();
+
+                socket.addEventListener("open", () => {
+                    try {
+                        /*
+                         * 현재 서버의 register 형식:
+                         *
+                         * {
+                         *   type: "register",
+                         *   token: "...",
+                         *   room_id: "room-1"
+                         * }
+                         *
+                         * 서버가 roomId camelCase를 사용한다면 room_id를 roomId로 바꾸면 됩니다.
+                         */
+                        sendSocketMessage({
+                            type: "register",
+                            token: accessToken,
+                            room_id: currentRoomId,
+                        });
+
+                        setStatusMessage(
+                            elements.chatStatusMessage,
+                            "사용자 인증 및 방 입장을 처리하고 있습니다.",
+                        );
+                    } catch (error) {
+                        setStatusMessage(
+                            elements.chatStatusMessage,
+                            error.message,
+                            "error",
+                        );
+
+                        disconnectSocket();
+                    }
+                });
+
+                socket.addEventListener("message", (event) => {
+                    handleSocketMessage(event.data);
+                });
+
+                socket.addEventListener("error", () => {
+                    setStatusMessage(
+                        elements.chatStatusMessage,
+                        "WebSocket 연결 중 오류가 발생했습니다.",
+                        "error",
+                    );
+                });
+
+                socket.addEventListener("close", (event) => {
+                    const wasIntentional = intentionalClose;
+
+                    socket = null;
+                    isRegistered = false;
+
+                    setConnectionStatus("disconnected");
+                    setChatEnabled(false);
+                    updateConnectionButtons();
+
+                    elements.roomInformation.textContent =
+                        "참여 중인 채팅방이 없습니다.";
+
+                    if (wasIntentional) {
+                        setStatusMessage(
+                            elements.chatStatusMessage,
+                            "연결을 종료했습니다.",
+                        );
+                    } else {
+                        const reason = event.reason
+                            ? `: ${event.reason}`
+                            : "";
+
+                        setStatusMessage(
+                            elements.chatStatusMessage,
+                            `WebSocket 연결이 종료되었습니다${reason}`,
+                            "error",
+                        );
+                    }
+                });
+            }
+
+            function disconnectSocket() {
+                if (!socket) {
+                    return;
+                }
+
+                intentionalClose = true;
+
+                if (
+                    socket.readyState === WebSocket.OPEN ||
+                    socket.readyState === WebSocket.CONNECTING
+                ) {
+                    socket.close(1000, "Client disconnected");
+                }
+
+                socket = null;
+                isRegistered = false;
+
+                setConnectionStatus("disconnected");
+                setChatEnabled(false);
+                updateConnectionButtons();
+            }
+
+            function handleSocketMessage(rawData) {
+                let message;
+
+                try {
+                    message = JSON.parse(rawData);
+                } catch {
+                    appendSystemMessage(
+                        "서버에서 해석할 수 없는 메시지를 받았습니다.",
+                    );
+
+                    return;
+                }
+
+                if (!message || typeof message.type !== "string") {
+                    return;
+                }
+
+                switch (message.type) {
+                    case "register-success":
+                    case "registered":
+                        handleRegisterSuccess(message);
+                        break;
+
+                    case "history":
+                        handleHistoryMessage(message);
+                        break;
+
+                    case "chat":
+                        appendChatMessage(message);
+                        scrollMessageAreaToBottom();
+                        break;
+
+                    case "notification":
+                        handleRoomNotification(message);
+                        break;
+
+                    case "user-notification":
+                        handleUserNotification(message);
+                        break;
+
+                    case "error":
+                        handleServerError(message);
+                        break;
+
+                    default:
+                        console.warn(
+                            "처리하지 않은 서버 메시지:",
+                            message,
+                        );
+                }
+            }
+
+            function handleRegisterSuccess(message) {
+                isRegistered = true;
+
+                setConnectionStatus("connected");
+                setChatEnabled(true);
+                updateConnectionButtons();
+
+                const connectionCount =
+                    message.roomConnectionCount ??
+                    message.connectionCount;
+
+                const userCount = message.userCount;
+
+                const counts = [];
+
+                if (typeof connectionCount === "number") {
+                    counts.push(`연결 ${connectionCount}개`);
+                }
+
+                if (typeof userCount === "number") {
+                    counts.push(`사용자 ${userCount}명`);
+                }
+
+                const suffix =
+                    counts.length > 0
+                        ? ` · ${counts.join(" · ")}`
+                        : "";
+
+                elements.roomInformation.textContent =
+                    `${currentRoomId} 방에 참여 중${suffix}`;
+
+                setStatusMessage(
+                    elements.chatStatusMessage,
+                    "채팅방에 입장했습니다.",
+                    "success",
+                );
+
+                /*
+                 * 서버가 register 성공 시 history를 자동 전송하지 않는다면
+                 * 아래 호출의 주석을 해제하세요.
+                 */
+                // requestHistory();
+
+                elements.messageInput.focus();
+            }
+
+            function handleHistoryMessage(message) {
+                historyLoading = false;
+
+                const messages = Array.isArray(message.messages)
+                    ? message.messages
+                    : [];
+
+                const previousScrollHeight =
+                    elements.messageArea.scrollHeight;
+
+                prependChatMessages(messages);
+
+                hasMoreHistory = Boolean(message.hasMore);
+
+                oldestMessageId =
+                    message.oldestMessageId ??
+                    messages[0]?.id ??
+                    oldestMessageId;
+
+                updateHistoryButton();
+
+                if (messages.length === 0) {
+                    if (elements.messageList.childElementCount === 0) {
+                        appendSystemMessage(
+                            "아직 작성된 메시지가 없습니다.",
+                        );
+                    }
+
+                    return;
+                }
+
+                const currentScrollHeight =
+                    elements.messageArea.scrollHeight;
+
+                elements.messageArea.scrollTop =
+                    currentScrollHeight - previousScrollHeight;
+            }
+
+            function handleRoomNotification(message) {
+                const connectionCount =
+                    message.roomConnectionCount ??
+                    message.connectionCount;
+
+                const userCount = message.userCount;
+
+                const counts = [];
+
+                if (typeof connectionCount === "number") {
+                    counts.push(`연결 ${connectionCount}개`);
+                }
+
+                if (typeof userCount === "number") {
+                    counts.push(`사용자 ${userCount}명`);
+                }
+
+                if (counts.length > 0 && currentRoomId) {
+                    elements.roomInformation.textContent =
+                        `${currentRoomId} 방에 참여 중 · ${counts.join(" · ")}`;
+                }
+
+                if (typeof message.message === "string") {
+                    appendSystemMessage(message.message);
+                    scrollMessageAreaToBottom();
+                }
+            }
+
+            function handleUserNotification(message) {
+                if (typeof message.message === "string") {
+                    appendSystemMessage(message.message);
+                    scrollMessageAreaToBottom();
+                }
+            }
+
+            function handleServerError(message) {
+                const errorMessage =
+                    typeof message.message === "string"
+                        ? message.message
+                        : "서버에서 오류가 발생했습니다.";
+
+                setStatusMessage(
+                    elements.chatStatusMessage,
+                    errorMessage,
+                    "error",
+                );
+
+                appendSystemMessage(errorMessage);
+                scrollMessageAreaToBottom();
+
+                if (
+                    message.code === "INVALID_ACCESS_TOKEN" ||
+                    message.code === "ACCESS_TOKEN_EXPIRED"
+                ) {
+                    clearAuthSession();
+                    disconnectSocket();
+                    showAuthScreen();
+
+                    setStatusMessage(
+                        elements.authStatusMessage,
+                        "로그인 정보가 만료되었습니다. 다시 로그인하세요.",
+                        "error",
+                    );
+                }
+            }
+
+            function requestHistory() {
+                if (
+                    !socket ||
+                    socket.readyState !== WebSocket.OPEN ||
+                    !isRegistered ||
+                    historyLoading
+                ) {
+                    return;
+                }
+
+                historyLoading = true;
+                updateHistoryButton();
+
+                /*
+                 * 서버의 history-request 형식:
+                 *
+                 * 최초:
+                 * {
+                 *   type: "history-request",
+                 *   limit: 30
+                 * }
+                 *
+                 * 이전 페이지:
+                 * {
+                 *   type: "history-request",
+                 *   beforeId: 123,
+                 *   limit: 30
+                 * }
+                 */
+                const payload = {
+                    type: "history-request",
+                    limit: HISTORY_PAGE_SIZE,
+                };
+
+                if (oldestMessageId !== null) {
+                    payload.beforeId = oldestMessageId;
+                }
+
+                try {
+                    sendSocketMessage(payload);
+                } catch (error) {
+                    historyLoading = false;
+                    updateHistoryButton();
+
+                    setStatusMessage(
+                        elements.chatStatusMessage,
+                        error.message,
+                        "error",
+                    );
+                }
+            }
+
+            function updateHistoryButton() {
+                const shouldShow =
+                    isRegistered && hasMoreHistory;
+
+                elements.historyButtonWrapper.classList.toggle(
+                    "hidden",
+                    !shouldShow,
+                );
+
+                elements.historyButton.disabled = historyLoading;
+
+                elements.historyButton.textContent = historyLoading
+                    ? "불러오는 중..."
+                    : "이전 메시지 불러오기";
+            }
+
+            function clearMessages() {
+                elements.messageList.replaceChildren();
+            }
+
+            function createMessageElement(message) {
+                const row = document.createElement("div");
+                row.className = "message-row";
+
+                const messageUserId =
+                    message.userId ??
+                    message.user_id ??
+                    null;
+
+                const isMine =
+                    currentUser &&
+                    messageUserId === currentUser.userId;
+
+                if (isMine) {
+                    row.classList.add("mine");
+                }
+
+                const bubble = document.createElement("div");
+                bubble.className = "message-bubble";
+
+                const meta = document.createElement("div");
+                meta.className = "message-meta";
+
+                const nickname = document.createElement("span");
+                nickname.textContent =
+                    typeof message.nickname === "string"
+                        ? message.nickname
+                        : "알 수 없음";
+
+                const createdAt = document.createElement("span");
+                createdAt.textContent = formatCreatedAt(
+                    message.createdAt ??
+                    message.created_at,
+                );
+
+                meta.append(nickname, createdAt);
+
+                const content = document.createElement("div");
+                content.className = "message-content";
+
+                /*
+                 * innerHTML이 아니라 textContent를 사용하여
+                 * 채팅 메시지를 통한 XSS를 방지합니다.
+                 */
+                content.textContent =
+                    typeof message.message === "string"
+                        ? message.message
+                        : "";
+
+                bubble.append(meta, content);
+                row.append(bubble);
+
+                return row;
+            }
+
+            function appendChatMessage(message) {
+                const element = createMessageElement(message);
+                elements.messageList.append(element);
+
+                if (oldestMessageId === null && message.id != null) {
+                    oldestMessageId = message.id;
+                }
+            }
+
+            function prependChatMessages(messages) {
+                const fragment = document.createDocumentFragment();
+
+                for (const message of messages) {
+                    fragment.append(createMessageElement(message));
+                }
+
+                elements.messageList.prepend(fragment);
+            }
+
+            function appendSystemMessage(text) {
+                const element = document.createElement("div");
+                element.className = "system-message";
+                element.textContent = text;
+
+                elements.messageList.append(element);
+            }
+
+            function scrollMessageAreaToBottom() {
+                elements.messageArea.scrollTop =
+                    elements.messageArea.scrollHeight;
+            }
+
+            function formatCreatedAt(value) {
+                if (typeof value !== "string") {
+                    return "";
+                }
+
+                const date = new Date(value);
+
+                if (Number.isNaN(date.getTime())) {
+                    return value;
+                }
+
+                return new Intl.DateTimeFormat("ko-KR", {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                }).format(date);
+            }
+
+            elements.loginTabButton.addEventListener(
+                "click",
+                () => {
+                    switchAuthMode("login");
+                },
+            );
+
+            elements.signupTabButton.addEventListener(
+                "click",
+                () => {
+                    switchAuthMode("signup");
+                },
+            );
+
+            elements.loginForm.addEventListener(
+                "submit",
+                async (event) => {
+                    event.preventDefault();
+
+                    const userId =
+                        elements.loginUserIdInput.value.trim();
+
+                    const password =
+                        elements.loginPasswordInput.value;
+
+                    setAuthLoading(true);
+                    setStatusMessage(
+                        elements.authStatusMessage,
+                        "로그인하고 있습니다.",
+                    );
+
+                    try {
+                        const result = await login(
+                            userId,
+                            password,
+                        );
+
+                        handleAuthenticationSuccess(result);
+
+                        elements.loginPasswordInput.value = "";
+                    } catch (error) {
+                        let message =
+                            error instanceof Error
+                                ? error.message
+                                : "로그인에 실패했습니다.";
+
+                        if (error.retryAfter) {
+                            message += ` ${error.retryAfter}초 후 다시 시도하세요.`;
+                        }
+
+                        setStatusMessage(
+                            elements.authStatusMessage,
+                            message,
+                            "error",
+                        );
+                    } finally {
+                        setAuthLoading(false);
+                    }
+                },
+            );
+
+            elements.signupForm.addEventListener(
+                "submit",
+                async (event) => {
+                    event.preventDefault();
+
+                    const userId =
+                        elements.signupUserIdInput.value.trim();
+
+                    const nickname =
+                        elements.signupNicknameInput.value.trim();
+
+                    const password =
+                        elements.signupPasswordInput.value;
+
+                    setAuthLoading(true);
+                    setStatusMessage(
+                        elements.authStatusMessage,
+                        "회원가입을 처리하고 있습니다.",
+                    );
+
+                    try {
+                        const result = await signup(
+                            userId,
+                            nickname,
+                            password,
+                        );
+
+                        handleAuthenticationSuccess(result);
+
+                        elements.signupPasswordInput.value = "";
+                    } catch (error) {
+                        let message =
+                            error instanceof Error
+                                ? error.message
+                                : "회원가입에 실패했습니다.";
+
+                        if (error.retryAfter) {
+                            message += ` ${error.retryAfter}초 후 다시 시도하세요.`;
+                        }
+
+                        setStatusMessage(
+                            elements.authStatusMessage,
+                            message,
+                            "error",
+                        );
+                    } finally {
+                        setAuthLoading(false);
+                    }
+                },
+            );
+
+            elements.connectButton.addEventListener(
+                "click",
+                () => {
+                    connectToRoom(
+                        elements.roomIdInput.value,
+                    );
+                },
+            );
+
+            elements.disconnectButton.addEventListener(
+                "click",
+                () => {
+                    disconnectSocket();
+
+                    elements.roomInformation.textContent =
+                        "참여 중인 채팅방이 없습니다.";
+                },
+            );
+
+            elements.historyButton.addEventListener(
+                "click",
+                () => {
+                    requestHistory();
+                },
+            );
+
+            elements.chatForm.addEventListener(
+                "submit",
+                (event) => {
+                    event.preventDefault();
+
+                    const message =
+                        elements.messageInput.value.trim();
+
+                    if (!message) {
+                        return;
+                    }
+
+                    if (!isRegistered) {
+                        setStatusMessage(
+                            elements.chatStatusMessage,
+                            "채팅방 입장이 완료되지 않았습니다.",
+                            "error",
+                        );
+
+                        return;
+                    }
+
+                    try {
+                        sendSocketMessage({
+                            type: "chat",
+                            message,
+                        });
+
+                        elements.messageInput.value = "";
+                        elements.messageInput.focus();
+                    } catch (error) {
+                        setStatusMessage(
+                            elements.chatStatusMessage,
+                            error.message,
+                            "error",
+                        );
+                    }
+                },
+            );
+
+            elements.logoutButton.addEventListener(
+                "click",
+                () => {
+                    disconnectSocket();
+                    clearAuthSession();
+                    clearMessages();
+
+                    currentRoomId = null;
                     oldestMessageId = null;
                     hasMoreHistory = false;
-                    isHistoryLoading = false;
-                    roomInput.disabled = true;
-                    joinRoomButton.disabled = true;
-                    loginButton.disabled = true;
-                    messageInput.disabled = false;
-                    sendBtn.disabled = false;
-                    loadPreviousBtn.disabled = true;
-                    currentUserId.textContent = data.userId;
-                    currentRoom.textContent = data.room_id;
-                    currentNickname.textContent = data.nickname;
-                    updateRoomCounts(data.roomConnectionCount, data.roomUserCount);
-                    roomInfo.style.display = "block";
-                    addMessage(data.message, "system", data.createdAt);
-                    messageInput.focus();
-                    break;
+
+                    elements.roomInformation.textContent =
+                        "참여 중인 채팅방이 없습니다.";
+
+                    showAuthScreen();
+                    switchAuthMode("login");
+
+                    setStatusMessage(
+                        elements.authStatusMessage,
+                        "로그아웃되었습니다.",
+                        "success",
+                    );
+                },
+            );
+
+            window.addEventListener("beforeunload", () => {
+                intentionalClose = true;
+
+                if (socket) {
+                    socket.close(1000, "Page unloaded");
                 }
+            });
 
-                case "history": {
-                    handleHistoryMessage(data);
-                    break;
-                }
+            function initialize() {
+                setConnectionStatus("disconnected");
+                updateConnectionButtons();
+                setChatEnabled(false);
+                updateHistoryButton();
 
-                case "chat": {
-                    addChatMessage(data);
+                if (restoreAuthSession()) {
+                    showChatScreen();
 
-                    if (oldestMessageId === null && Number.isInteger(data.id)) {
-                        oldestMessageId = data.id;
-                    }
-                    break;
-                }
-
-                case "notification": {
-                    updateRoomCounts(data.roomConnectionCount, data.roomUserCount);
-                    addMessage(data.message, "system", data.createdAt);
-                    break;
-                }
-
-                case "user-notification": {
-                    addMessage(data.message, "system", data.createdAt);
-                    break;
-                }
-
-                case "error": {
-                    handleServerError(data);
-                    break;
+                    setStatusMessage(
+                        elements.chatStatusMessage,
+                        "저장된 로그인 정보를 불러왔습니다. 채팅방에 입장하세요.",
+                        "success",
+                    );
+                } else {
+                    showAuthScreen();
+                    switchAuthMode("login");
                 }
             }
-        }
 
-        function handleSocketClose() {
-            socket = null;
-            pendingRoomId = null;
-            joinedRoomId = null;
-            oldestMessageId = null;
-            hasMoreHistory = false;
-            isHistoryLoading = false;
-            updateRoomCounts(0, 0);
-            messageInput.disabled = true;
-            sendBtn.disabled = true;
-            loadPreviousBtn.disabled = true;
-
-            if (accessToken && loggedInUser) {
-                roomInput.disabled = false;
-                joinRoomButton.disabled = false;
-            } else {
-                roomInput.disabled = true;
-                joinRoomButton.disabled = true;
-            }
-
-            addMessage("WebSocket 연결이 종료되었습니다.", "system");
-        }
-
-        function logout() {
-            socket?.close();
-            socket = null;
-            accessToken = null;
-            loggedInUser = null;
-            pendingRoomId = null;
-            resetRoomState();
-            loginUserIdInput.disabled = false;
-            passwordInput.disabled = false;
-            loginButton.disabled = false;
-            logoutButton.disabled = true;
-            roomInput.disabled = true;
-            joinRoomButton.disabled = true;
-            passwordInput.value = "";
-            loginStatus.textContent = "로그아웃했습니다.";
-        }
-
-        function sendChatMessage() {
-            if (!joinedRoomId) {
-                addMessage("먼저 채팅방에 입장하세요.", "error");
-                return;
-            }
-
-            const message = messageInput.value.trim();
-
-            if (!message) {
-                addMessage("메시지를 입력하세요.", "error");
-                return;
-            }
-
-            try {
-                sendJson({
-                    type: "chat",
-                    message,
-                });
-                messageInput.value = "";
-                messageInput.focus();
-            } catch (error) {
-                addMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "메시지 전송에 실패했습니다.",
-                    "error",
-                );
-            }
-        }
-
-        function requestPreviousHistory() {
-            if (!joinedRoomId) {
-                addMessage("먼저 채팅방에 입장하세요.", "error");
-                return;
-            }
-
-            if (oldestMessageId === null) {
-                addMessage("기준이 되는 메시지가 없습니다.", "system");
-                return;
-            }
-
-            if (isHistoryLoading) {
-                return;
-            }
-
-            if (!hasMoreHistory) {
-                addMessage("더 이상 이전 메시지가 없습니다.", "system");
-                return;
-            }
-
-            isHistoryLoading = true;
-            loadPreviousBtn.disabled = true;
-
-            try {
-                sendJson({
-                    type: "history-request",
-                    before_id: oldestMessageId,
-                    limit: 30,
-                });
-            } catch (error) {
-                isHistoryLoading = false;
-                loadPreviousBtn.disabled = !hasMoreHistory;
-                addMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "이전 메시지 요청에 실패했습니다.",
-                    "error",
-                );
-            }
-        }
-
-        loginButton.addEventListener("click", () => {
-            void login();
-        });
-        logoutButton.addEventListener("click", logout);
-        joinRoomButton.addEventListener("click", () => {
-            void joinRoom();
-        });
-        sendBtn.addEventListener("click", sendChatMessage);
-        loadPreviousBtn.addEventListener("click", requestPreviousHistory);
-        passwordInput.addEventListener("keydown", (event) => {
-            if (event.key === "Enter") {
-                void login();
-            }
-        });
-        roomInput.addEventListener("keydown", (event) => {
-            if (event.key === "Enter") {
-                void joinRoom();
-            }
-        });
-        messageInput.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" && !event.isComposing) {
-                event.preventDefault();
-                sendChatMessage();
-            }
-        });
-
-        resetRoomState();
+            initialize();
+        })();
     </script>
 </body>
 
