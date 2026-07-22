@@ -89,6 +89,9 @@ export const envSchema = z.object({
         .min(1)
         .optional(),
 
+    LOG_LEVEL: z.enum([
+        "debug", "info", "warn", "error"
+    ]).default("info")
 });
 
 export type EnvironmentVariables =

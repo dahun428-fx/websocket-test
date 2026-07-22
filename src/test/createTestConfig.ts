@@ -3,6 +3,7 @@ import type { AppConfig } from "../config";
 export function createTestConfig(databasePath: string, port = 0): AppConfig {
   return {
     environment: "test",
+    logging: { level: "info" },
     server: { host: "127.0.0.1", port },
     database: { path: databasePath },
     auth: {

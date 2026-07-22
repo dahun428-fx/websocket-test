@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { randomUUID } from "node:crypto";
 
 import WebSocket, { type RawData, WebSocketServer } from "ws";
 
@@ -8,6 +9,7 @@ import { createChatHandler } from "../handlers/chatHandler";
 import { createHistoryHandler } from "../handlers/historyHandler";
 import { createRegisterHandler } from "../handlers/registerHandler";
 import { logHeartbeat, startHeartbeat } from "../heartbeat/heartbeat";
+import type { Logger } from "../logging/logger";
 import { parseClientMessage } from "../parser/messageParser";
 import { enqueueMessage } from "../queue/messageQueue";
 import type { MessageRepository } from "../repositories/messageRepository";
@@ -24,6 +26,7 @@ export interface ChatDependencies {
   createTimestamp?: () => string;
   verifyAccessToken(token: string): AccessTokenPayload;
   heartbeatDebug: boolean;
+  logger: Logger;
 }
 
 export interface ChatRuntime {
@@ -56,9 +59,13 @@ export function attachChatRuntime(
     createdAt: createTimestamp(),
   });
 
-  async function sendErrorSafely(socket: ChatWebSocket, code: ErrorCode): Promise<void> {
+  async function sendErrorSafely(
+    socket: ChatWebSocket,
+    logger: Logger,
+    code: ErrorCode,
+  ): Promise<void> {
     await sendError(socket, code).catch((error) => {
-      console.error("오류 응답 전송 실패:", error);
+      logger.error("WebSocket error response failed", { error });
     });
   }
 
@@ -97,23 +104,28 @@ export function attachChatRuntime(
     }),
   };
 
-  async function handleMessage(socket: ChatWebSocket, rawMessage: RawData): Promise<void> {
+  async function handleMessage(
+    socket: ChatWebSocket,
+    logger: Logger,
+    rawMessage: RawData,
+  ): Promise<void> {
     const message = parseClientMessage(rawMessage);
     if (!message) {
-      await sendErrorSafely(socket, "MESSAGE_PARSE_FAILED");
+      await sendErrorSafely(socket, logger, "MESSAGE_PARSE_FAILED");
       return;
     }
 
     try {
       await dispatchMessage(socket, message, handlers);
     } catch (error) {
-      console.error("메시지 처리 중 오류 발생:", error);
-      await sendErrorSafely(socket, "INTERNAL_SERVER_ERROR");
+      logger.error("WebSocket message handling failed", { error });
+      await sendErrorSafely(socket, logger, "INTERNAL_SERVER_ERROR");
     }
   }
 
-  function handleClose(socket: ChatWebSocket): void {
+  function handleClose(socket: ChatWebSocket, logger: Logger, closeCode: number): void {
     socket.isClosed = true;
+    logger.info("WebSocket disconnected", { closeCode });
     const nickname = socket.nickname;
     const roomId = roomService.leave(socket);
     if (!nickname || !roomId) return;
@@ -130,12 +142,16 @@ export function attachChatRuntime(
 
   webSocketServer.on("connection", (connection) => {
     const socket = connection as ChatWebSocket;
+    socket.connectionId = randomUUID();
     socket.userId = null;
     socket.nickname = null;
     socket.room_id = null;
     socket.messageQueue = Promise.resolve();
     socket.isClosed = false;
     socket.isAlive = true;
+    const connectionLogger = dependencies.logger.child({ connectionId: socket.connectionId });
+
+    connectionLogger.info("WebSocket connected");
 
     const welcome: ServerMessage = {
       type: "connection",
@@ -143,27 +159,27 @@ export function attachChatRuntime(
       createdAt: createTimestamp(),
     };
     void sendJson(socket, welcome).catch((error) => {
-      console.error("연결 안내 메시지 전송 실패:", error);
+      connectionLogger.error("WebSocket welcome message failed", { error });
     });
 
     socket.on("message", (rawMessage) => {
       enqueueMessage(
         socket,
-        () => handleMessage(socket, rawMessage),
+        () => handleMessage(socket, connectionLogger, rawMessage),
         async (error) => {
-          console.error("메시지 queue 처리 실패:", error);
-          await sendErrorSafely(socket, "INTERNAL_SERVER_ERROR");
+          connectionLogger.error("WebSocket message queue failed", { error });
+          await sendErrorSafely(socket, connectionLogger, "INTERNAL_SERVER_ERROR");
         },
       );
     });
     socket.on("pong", () => {
       socket.isAlive = true;
-      logHeartbeat("pong", socket, dependencies.heartbeatDebug);
+      logHeartbeat("pong", socket, dependencies.logger, dependencies.heartbeatDebug);
     });
-    socket.on("close", () => handleClose(socket));
+    socket.on("close", (closeCode) => handleClose(socket, connectionLogger, closeCode));
     socket.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code !== "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH") {
-        console.error("WebSocket 연결 에러:", error);
+        connectionLogger.error("WebSocket connection error", { error });
       }
     });
   });
@@ -171,6 +187,7 @@ export function attachChatRuntime(
   const heartbeatTimer = startHeartbeat(
     webSocketServer,
     dependencies.heartbeatIntervalMs,
+    dependencies.logger,
     dependencies.heartbeatDebug,
   );
   let closed = false;

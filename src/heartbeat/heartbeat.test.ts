@@ -6,6 +6,7 @@ import {
   resolveHeartbeatIntervalMs,
   runHeartbeat,
 } from "./heartbeat";
+import type { Logger } from "../logging/logger";
 import type { ChatWebSocket } from "../types/websocket";
 
 function createClient(options: {
@@ -13,6 +14,7 @@ function createClient(options: {
   readyState?: number;
 }): ChatWebSocket {
   return {
+    connectionId: "connection-123",
     isAlive: options.isAlive,
     readyState: options.readyState ?? WebSocket.OPEN,
     nickname: null,
@@ -20,6 +22,18 @@ function createClient(options: {
     ping: vi.fn(),
     terminate: vi.fn(),
   } as unknown as ChatWebSocket;
+}
+
+function createLogger() {
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(),
+  } satisfies Logger;
+  logger.child.mockReturnValue(logger);
+  return logger;
 }
 
 afterEach(() => {
@@ -30,9 +44,10 @@ afterEach(() => {
 describe("runHeartbeat", () => {
   it("pings an alive open client and waits for its next pong", () => {
     const client = createClient({ isAlive: true });
+    const logger = createLogger();
     const wss = { clients: new Set([client]) } as unknown as WebSocketServer;
 
-    runHeartbeat(wss, false);
+    runHeartbeat(wss, logger, false);
 
     expect(client.ping).toHaveBeenCalledOnce();
     expect(client.terminate).not.toHaveBeenCalled();
@@ -41,9 +56,10 @@ describe("runHeartbeat", () => {
 
   it("terminates an open client that did not answer the previous ping", () => {
     const client = createClient({ isAlive: false });
+    const logger = createLogger();
     const wss = { clients: new Set([client]) } as unknown as WebSocketServer;
 
-    runHeartbeat(wss, false);
+    runHeartbeat(wss, logger, false);
 
     expect(client.terminate).toHaveBeenCalledOnce();
     expect(client.ping).not.toHaveBeenCalled();
@@ -54,9 +70,10 @@ describe("runHeartbeat", () => {
       isAlive: false,
       readyState: WebSocket.CLOSED,
     });
+    const logger = createLogger();
     const wss = { clients: new Set([client]) } as unknown as WebSocketServer;
 
-    runHeartbeat(wss, false);
+    runHeartbeat(wss, logger, false);
 
     expect(client.terminate).not.toHaveBeenCalled();
     expect(client.ping).not.toHaveBeenCalled();
@@ -82,35 +99,37 @@ describe("resolveHeartbeatIntervalMs", () => {
 
 describe("logHeartbeat", () => {
   it("does not log when heartbeat debugging is disabled", () => {
-    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const client = createClient({ isAlive: true });
+    const logger = createLogger();
 
-    logHeartbeat("ping", client, false);
+    logHeartbeat("ping", client, logger, false);
 
-    expect(debug).not.toHaveBeenCalled();
+    expect(logger.debug).not.toHaveBeenCalled();
   });
 
   it("logs ping and connection context when heartbeat debugging is enabled", () => {
-    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const client = createClient({ isAlive: true });
+    const logger = createLogger();
     client.nickname = "neo";
     client.room_id = "room-1";
 
-    logHeartbeat("ping", client, true);
+    logHeartbeat("ping", client, logger, true);
 
-    expect(debug).toHaveBeenCalledWith("[heartbeat] ping 전송", {
+    expect(logger.debug).toHaveBeenCalledWith("Heartbeat ping sent", {
+      connectionId: "connection-123",
       nickname: "neo",
       roomId: "room-1",
     });
   });
 
   it("logs pong receipt when heartbeat debugging is enabled", () => {
-    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const client = createClient({ isAlive: true });
+    const logger = createLogger();
 
-    logHeartbeat("pong", client, true);
+    logHeartbeat("pong", client, logger, true);
 
-    expect(debug).toHaveBeenCalledWith("[heartbeat] pong 수신", {
+    expect(logger.debug).toHaveBeenCalledWith("Heartbeat pong received", {
+      connectionId: "connection-123",
       nickname: null,
       roomId: null,
     });

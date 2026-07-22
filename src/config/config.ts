@@ -2,6 +2,9 @@ import { EnvironmentVariables, envSchema } from "./envSchema";
 
 export interface AppConfig {
     environment: | "development" | "test" | "production";
+    logging: {
+        level: | "debug" | "info" | "warn" | "error";
+    }
     server: {
         host: string;
         port: number;
@@ -60,6 +63,9 @@ export function createConfig(
 function mapEnvironmentToConfig(env: EnvironmentVariables): AppConfig {
     return {
         environment: env.NODE_ENV,
+        logging: {
+            level: env.LOG_LEVEL
+        },
         server: {
             host: env.HOST,
             port: env.PORT,

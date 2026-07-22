@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Logger } from "../logging/logger";
 import type { AuthService } from "../service/authService";
 import { createAuthHttpHandler } from "./authHttpHandler";
 
@@ -34,16 +35,30 @@ function createAuthService(): AuthService {
   };
 }
 
+function createTestLogger() {
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(),
+  } satisfies Logger;
+  logger.child.mockReturnValue(logger);
+  return logger;
+}
+
 describe("createAuthHttpHandler", () => {
   let server: http.Server;
   let baseUrl: string;
   let authService: AuthService;
+  let logger: ReturnType<typeof createTestLogger>;
 
   beforeEach(async () => {
     authService = createAuthService();
+    logger = createTestLogger();
     const handler = createAuthHttpHandler(authService, handlerConfig);
     server = http.createServer((request, response) => {
-      void handler(request, response).then((handled) => {
+      void handler(request, response, { requestId: "request-123", logger }).then((handled) => {
         if (!handled) {
           response.writeHead(404).end();
         }
@@ -74,6 +89,26 @@ describe("createAuthHttpHandler", () => {
     await expect(response.json()).resolves.not.toHaveProperty("refreshToken");
   });
 
+  it("logs login outcomes without including the password", async () => {
+    const successfulLogin = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "valid", password: "test1234" }),
+    });
+    const failedLogin = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "unknown", password: "never-log-this" }),
+    });
+
+    expect(successfulLogin.status).toBe(200);
+    expect(failedLogin.status).toBe(401);
+    expect(logger.info).toHaveBeenCalledWith("Login attempt", { userId: "valid" });
+    expect(logger.info).toHaveBeenCalledWith("Login succeeded", { userId: "valid" });
+    expect(logger.warn).toHaveBeenCalledWith("Login failed", {
+      userId: "unknown",
+      reason: "invalid_credentials",
+    });
+  });
+
   it("accepts a body at the byte limit and rejects one byte over it", async () => {
     const body = JSON.stringify({ userId: "valid", password: "test1234" });
     const handler = createAuthHttpHandler(authService, {
@@ -82,7 +117,7 @@ describe("createAuthHttpHandler", () => {
       loginRateLimit: { maxAttempts: 10, windowMs: 60_000 },
     });
     server.removeAllListeners("request");
-    server.on("request", (request, response) => void handler(request, response));
+    server.on("request", (request, response) => void handler(request, response, { requestId: "request-123", logger }));
 
     const accepted = await fetch(`${baseUrl}/login`, { method: "POST", body });
     const rejected = await fetch(`${baseUrl}/login`, { method: "POST", body: `${body} ` });
@@ -135,7 +170,7 @@ describe("createAuthHttpHandler", () => {
       refreshTokenCookie: { name: "session", maxAgeSeconds: 60, secure: false },
     });
     server.removeAllListeners("request");
-    server.on("request", (request, response) => void handler(request, response));
+    server.on("request", (request, response) => void handler(request, response, { requestId: "request-123", logger }));
 
     const response = await fetch(`${baseUrl}/refresh`, {
       method: "POST",

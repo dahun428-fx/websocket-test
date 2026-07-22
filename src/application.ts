@@ -12,6 +12,8 @@ import { createUserRepository } from "./repositories/userRepository";
 import { createAuthService } from "./service/authService";
 import { createRefreshTokenRepository } from "./repositories/refreshTokenRepository";
 import type { AppConfig } from "./config";
+import { createRequestContext } from "./http/requestContext";
+import { createJsonLogger } from "./logging/jsonLogger";
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 16 * 1024;
@@ -42,6 +44,17 @@ function sendJson(response: http.ServerResponse, statusCode: number, payload: un
 
 export async function createApplication(options: CreateApplicationOptions): Promise<Application> {
   const { config } = options;
+
+  const logger = createJsonLogger({
+    minimumLevel: config.logging.level,
+    baseContext: {
+      application: "chat-backend",
+      environment: config.environment
+    }
+  })
+
+  logger.info("Application configuration loaded")
+
   const database: DatabaseConnection = await openDatabase(config.database.path);
   const userRepository = createUserRepository(database);
   const refreshTokenRepository = createRefreshTokenRepository(database);
@@ -63,31 +76,51 @@ export async function createApplication(options: CreateApplicationOptions): Prom
 
   const server = http.createServer((request, response) => {
     void (async () => {
-      if (await authHandler(request, response)) return;
+      const context = createRequestContext(request);
+      const requestLogger = logger.child({
+        requestId: context.requestId,
+        method: context.method,
+        path: context.path,
+      });
 
-      const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-      if (request.method === "GET" && url.pathname === "/") {
-        const data = await fs.readFile(publicIndexPath);
-        response.writeHead(200, {
-          "Content-Type": "text/html; charset=utf-8",
-          "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:",
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-          "Referrer-Policy": "no-referrer",
+      response.setHeader("X-Request-ID", context.requestId);
+      requestLogger.info("HTTP request started");
+
+      try {
+        if (await authHandler(request, response, {
+          requestId: context.requestId,
+          logger: requestLogger,
+        })) return;
+
+        const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+        if (request.method === "GET" && url.pathname === "/") {
+          const data = await fs.readFile(publicIndexPath);
+          response.writeHead(200, {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Referrer-Policy": "no-referrer",
+          });
+          response.end(data);
+          return;
+        }
+
+        sendJson(response, 404, { message: "요청한 경로를 찾을 수 없습니다." });
+      } catch (error) {
+        requestLogger.error("Unhandled HTTP request error", { error });
+        if (!response.headersSent) {
+          sendJson(response, 500, { message: "서버 내부 오류가 발생했습니다." });
+        } else if (!response.writableEnded) {
+          response.destroy(error instanceof Error ? error : undefined);
+        }
+      } finally {
+        requestLogger.info("HTTP request completed", {
+          statusCode: response.statusCode,
+          durationMs: Math.round((performance.now() - context.startedAt) * 100) / 100,
         });
-        response.end(data);
-        return;
       }
-
-      sendJson(response, 404, { message: "요청한 경로를 찾을 수 없습니다." });
-    })().catch((error) => {
-      console.error("HTTP 요청 처리 오류:", error);
-      if (!response.headersSent) {
-        sendJson(response, 500, { message: "서버 내부 오류가 발생했습니다." });
-      } else {
-        response.destroy(error instanceof Error ? error : undefined);
-      }
-    });
+    })();
   });
 
   let chatRuntime: ChatRuntime | null = null;
@@ -118,6 +151,7 @@ export async function createApplication(options: CreateApplicationOptions): Prom
         maxPayloadBytes: options.websocketMaxPayloadBytes ?? DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES,
         verifyAccessToken: tokenService.verifyAccessToken,
         heartbeatDebug: config.heartbeat.debug,
+        logger,
       });
       return (server.address() as AddressInfo).port;
     } catch (error) {

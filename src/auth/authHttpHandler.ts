@@ -6,6 +6,7 @@ import { loginRequestSchema } from "../schemas/loginSchema";
 import { signupRequestSchema } from "../schemas/signupSchema";
 import type { AuthService } from "../service/authService";
 import { getCookie } from "../http/cookieUtils";
+import type { HttpHandlerContext } from "../http/httpHandlerContext";
 
 class BodyTooLargeError extends Error { }
 
@@ -190,6 +191,7 @@ export function createAuthHttpHandler(
   return async function handleAuthRequest(
     request: IncomingMessage,
     response: ServerResponse,
+    context: HttpHandlerContext,
   ): Promise<boolean> {
     const url = new URL(
       request.url ?? "/",
@@ -209,6 +211,8 @@ export function createAuthHttpHandler(
       const input = await parseJsonBody(request, response, loginRequestSchema, maxBodyBytes);
       if (!input) return true;
 
+      context.logger.info("Login attempt", { userId: input.userId });
+
       const remoteAddress = request.socket.remoteAddress ?? "unknown";
       const ipKey = `ip:${remoteAddress}`;
       const accountKey = `account:${remoteAddress}:${input.userId}`;
@@ -225,11 +229,17 @@ export function createAuthHttpHandler(
 
       const result = await authService.login(input.userId, input.password);
       if (!result) {
+        context.logger.warn("Login failed", {
+          userId: input.userId,
+          reason: "invalid_credentials",
+        });
         sendJson(response, 401, { message: "사용자 ID 또는 비밀번호가 올바르지 않습니다." });
         return true;
       }
 
       limiter.reset(accountKey);
+
+      context.logger.info("Login succeeded", { userId: result.user.userId });
 
       const { refreshToken, refreshTokenExpiresAt, ...responseBody } = result;
 

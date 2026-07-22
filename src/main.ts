@@ -2,27 +2,40 @@ import "dotenv/config";
 import { createConfig } from "./config";
 
 import { createApplication } from "./application";
+import { createJsonLogger } from "./logging/jsonLogger";
+
+const bootstrapLogger = createJsonLogger({
+  minimumLevel: "info",
+  baseContext: { application: "chat-backend" },
+});
 
 async function main(): Promise<void> {
   const config = createConfig();
+  const logger = createJsonLogger({
+    minimumLevel: config.logging.level,
+    baseContext: {
+      application: "chat-backend",
+      environment: config.environment,
+    },
+  });
 
   const application = await createApplication({
     config,
   });
   const port = await application.start();
-  console.log(`서버 실행: http://localhost:${port}`);
+  logger.info("Server started", { port });
 
   let shuttingDown = false;
   const shutdown = async (signal: NodeJS.Signals) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`${signal} 신호 수신, 서버 종료 중...`);
+    logger.info("Server shutdown started", { signal });
     await application.stop();
   };
 
   const handleSignal = (signal: NodeJS.Signals) => {
     void shutdown(signal).catch((error) => {
-      console.error("서버 종료 실패:", error);
+      logger.error("Server shutdown failed", { error });
       process.exitCode = 1;
     });
   };
@@ -32,6 +45,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  console.error("서버 시작 실패:", error);
+  bootstrapLogger.error("Server startup failed", { error });
   process.exitCode = 1;
 });

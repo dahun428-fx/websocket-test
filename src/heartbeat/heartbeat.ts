@@ -1,5 +1,6 @@
 import WebSocket, { type WebSocketServer } from "ws";
 
+import type { Logger } from "../logging/logger";
 import type { ChatWebSocket } from "../types/websocket";
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
@@ -18,20 +19,21 @@ export function resolveHeartbeatIntervalMs(value: string | number | undefined): 
 export function logHeartbeat(
   event: HeartbeatEvent,
   ws: ChatWebSocket,
+  logger: Logger,
   debug: boolean,
 ): void {
   if (!debug) {
     return;
   }
 
-  const direction = event === "ping" ? "전송" : "수신";
-  console.debug(`[heartbeat] ${event} ${direction}`, {
+  logger.debug(event === "ping" ? "Heartbeat ping sent" : "Heartbeat pong received", {
+    connectionId: ws.connectionId,
     nickname: ws.nickname,
     roomId: ws.room_id,
   });
 }
 
-export function runHeartbeat(wss: WebSocketServer, debug: boolean): void {
+export function runHeartbeat(wss: WebSocketServer, logger: Logger, debug: boolean): void {
   wss.clients.forEach((client) => {
     const ws = client as ChatWebSocket;
 
@@ -40,7 +42,8 @@ export function runHeartbeat(wss: WebSocketServer, debug: boolean): void {
     }
 
     if (!ws.isAlive) {
-      console.warn("Heartbeat 응답이 없어 연결을 종료합니다.", {
+      logger.warn("Heartbeat timed out", {
+        connectionId: ws.connectionId,
         nickname: ws.nickname,
         roomId: ws.room_id,
       });
@@ -49,7 +52,7 @@ export function runHeartbeat(wss: WebSocketServer, debug: boolean): void {
     }
 
     ws.isAlive = false;
-    logHeartbeat("ping", ws, debug);
+    logHeartbeat("ping", ws, logger, debug);
     ws.ping();
   });
 }
@@ -57,7 +60,8 @@ export function runHeartbeat(wss: WebSocketServer, debug: boolean): void {
 export function startHeartbeat(
   wss: WebSocketServer,
   intervalMs: number,
+  logger: Logger,
   debug: boolean,
 ): NodeJS.Timeout {
-  return setInterval(() => runHeartbeat(wss, debug), intervalMs);
+  return setInterval(() => runHeartbeat(wss, logger, debug), intervalMs);
 }

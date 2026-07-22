@@ -57,6 +57,14 @@ describe("Application", () => {
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
   });
 
+  it("returns the request ID in the response headers", async () => {
+    const response = await fetch(`${baseUrl}/missing`, {
+      headers: { "X-Request-ID": "request-123" },
+    });
+
+    expect(response.headers.get("x-request-id")).toBe("request-123");
+  });
+
   it("rotates refresh tokens and invalidates them on logout", async () => {
     const loginResponse = await fetch(`${baseUrl}/login`, {
       method: "POST",
