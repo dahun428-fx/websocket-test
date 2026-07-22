@@ -32,6 +32,21 @@ async function initializeSchema(database: DatabaseConnection): Promise<void> {
         created_at TEXT NOT NULL
       )
     `);
+
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        token_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        revoked_at TEXT,
+        FOREIGN KEY (user_id)
+          REFERENCES users(id)
+          ON DELETE CASCADE
+      )
+    `);
+
     await database.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_room_id
       ON messages (room_id, id)

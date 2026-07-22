@@ -7,18 +7,24 @@ import type { AuthService } from "../service/authService";
 import { createAuthHttpHandler } from "./authHttpHandler";
 
 function createAuthService(): AuthService {
+  const authResult = {
+    accessToken: "token",
+    refreshToken: "refresh-token",
+    refreshTokenExpiresAt: "2026-12-31T00:00:00.000Z",
+    user: { userId: "valid", nickname: "neo" },
+  };
+
   return {
-    login: vi.fn(async (userId) => userId === "valid" ? {
-      accessToken: "token",
-      user: { userId: "valid", nickname: "neo" },
-    } : null),
+    login: vi.fn(async (userId) => userId === "valid" ? authResult : null),
     signup: vi.fn(async (input) => ({
       success: true as const,
       data: {
-        accessToken: "token",
+        ...authResult,
         user: { userId: input.userId, nickname: input.nickname },
       },
     })),
+    refresh: vi.fn(async (refreshToken) => refreshToken === "refresh-token" ? authResult : null),
+    logout: vi.fn(async () => undefined),
   };
 }
 
@@ -61,6 +67,8 @@ describe("createAuthHttpHandler", () => {
       nickname: "neo",
       password: "test1234",
     });
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    await expect(response.json()).resolves.not.toHaveProperty("refreshToken");
   });
 
   it("accepts a body at the byte limit and rejects one byte over it", async () => {
@@ -101,6 +109,31 @@ describe("createAuthHttpHandler", () => {
     expect((await request("unknown", "wrong")).status).toBe(401);
     expect((await request("valid", "correct")).status).toBe(200);
     expect((await request("another-unknown", "wrong")).status).toBe(429);
+  });
+
+  it("rotates the refresh cookie and returns only the access-token response", async () => {
+    const response = await fetch(`${baseUrl}/refresh`, {
+      method: "POST",
+      headers: { Cookie: "refresh_token=refresh-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("refresh_token=refresh-token");
+    await expect(response.json()).resolves.toEqual({
+      accessToken: "token",
+      user: { userId: "valid", nickname: "neo" },
+    });
+  });
+
+  it("revokes the refresh token and clears the cookie on logout", async () => {
+    const response = await fetch(`${baseUrl}/logout`, {
+      method: "POST",
+      headers: { Cookie: "refresh_token=refresh-token" },
+    });
+
+    expect(response.status).toBe(204);
+    expect(authService.logout).toHaveBeenCalledWith("refresh-token");
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
 });

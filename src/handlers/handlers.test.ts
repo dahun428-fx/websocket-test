@@ -54,12 +54,12 @@ function createToken(userId = "user-1", nickname = "neo"): string {
 }
 
 afterEach(() => {
-  delete process.env.JWT_SECRET;
+  delete process.env.JWT_ACCESS_SECRET;
 });
 
 describe("message handlers", () => {
   it("registers using only the authenticated token nickname", async () => {
-    process.env.JWT_SECRET = "test-secret";
+    process.env.JWT_ACCESS_SECRET = "access-test-secret";
     const socket = createSocket();
     const sendJson: SendJson = vi.fn(async () => undefined);
     const handler = createRegisterHandler({
@@ -81,7 +81,7 @@ describe("message handlers", () => {
   });
 
   it("rejects a token without a nickname", async () => {
-    process.env.JWT_SECRET = "test-secret";
+    process.env.JWT_ACCESS_SECRET = "access-test-secret";
     const socket = createSocket();
     const sendError: SendError = vi.fn(async () => undefined);
     const handler = createRegisterHandler({
@@ -103,7 +103,7 @@ describe("message handlers", () => {
   });
 
   it("rolls back and closes the socket when history delivery fails", async () => {
-    process.env.JWT_SECRET = "test-secret";
+    process.env.JWT_ACCESS_SECRET = "access-test-secret";
     const socket = createSocket();
     const roomService = createRoomService();
     const handler = createRegisterHandler({

@@ -18,7 +18,8 @@ describe("Application", () => {
   let testDirectory: string;
 
   beforeEach(async () => {
-    process.env.JWT_SECRET = "test-secret";
+    process.env.JWT_ACCESS_SECRET = "access-test-secret";
+    process.env.JWT_REFRESH_SECRET = "refresh-test-secret";
     testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
     const databasePath = path.join(testDirectory, "server-test.db");
     const database = await openDatabase(databasePath);
@@ -45,7 +46,8 @@ describe("Application", () => {
   afterEach(async () => {
     await application.stop();
     await rm(testDirectory, { recursive: true, force: true });
-    delete process.env.JWT_SECRET;
+    delete process.env.JWT_ACCESS_SECRET;
+    delete process.env.JWT_REFRESH_SECRET;
   });
 
   it("returns an access token for valid login credentials", async () => {
@@ -59,6 +61,46 @@ describe("Application", () => {
       accessToken: expect.any(String),
       user: { userId: "user-100", nickname: "neo" },
     });
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+  });
+
+  it("rotates refresh tokens and invalidates them on logout", async () => {
+    const loginResponse = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "user-100", password: "test1234" }),
+    });
+    const firstCookie = loginResponse.headers.get("set-cookie");
+
+    expect(firstCookie).toContain("refresh_token=");
+
+    const refreshResponse = await fetch(`${baseUrl}/refresh`, {
+      method: "POST",
+      headers: { Cookie: firstCookie ?? "" },
+    });
+    const secondCookie = refreshResponse.headers.get("set-cookie");
+
+    expect(refreshResponse.status).toBe(200);
+    expect(secondCookie).toContain("refresh_token=");
+    await expect(
+      fetch(`${baseUrl}/refresh`, {
+        method: "POST",
+        headers: { Cookie: firstCookie ?? "" },
+      }),
+    ).resolves.toMatchObject({ status: 401 });
+
+    const logoutResponse = await fetch(`${baseUrl}/logout`, {
+      method: "POST",
+      headers: { Cookie: secondCookie ?? "" },
+    });
+
+    expect(logoutResponse.status).toBe(204);
+    expect(logoutResponse.headers.get("set-cookie")).toContain("Max-Age=0");
+    await expect(
+      fetch(`${baseUrl}/refresh`, {
+        method: "POST",
+        headers: { Cookie: secondCookie ?? "" },
+      }),
+    ).resolves.toMatchObject({ status: 401 });
   });
 
   it("creates a user from a JSON signup request and rejects duplicates", async () => {

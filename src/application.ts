@@ -9,6 +9,7 @@ import { openDatabase, type DatabaseConnection } from "./database/database";
 import { createMessageRepository } from "./repositories/messageRepository";
 import { createUserRepository } from "./repositories/userRepository";
 import { createAuthService } from "./service/authService";
+import { createRefreshTokenRepository } from "./repositories/refreshTokenRepository";
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 16 * 1024;
@@ -41,8 +42,9 @@ function sendJson(response: http.ServerResponse, statusCode: number, payload: un
 export async function createApplication(options: ApplicationOptions): Promise<Application> {
   const database: DatabaseConnection = await openDatabase(options.databasePath);
   const userRepository = createUserRepository(database);
+  const refreshTokenRepository = createRefreshTokenRepository(database);
   const messageRepository = createMessageRepository(database);
-  const authService = createAuthService(userRepository);
+  const authService = createAuthService(userRepository, refreshTokenRepository);
   const authHandler = createAuthHttpHandler(authService, options.authHttp);
   const publicIndexPath = options.publicIndexPath
     ?? path.join(__dirname, "..", "public", "index.html");

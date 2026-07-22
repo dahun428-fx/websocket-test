@@ -2,7 +2,16 @@ import {
   hashPassword as defaultHashPassword,
   verifyPassword as defaultVerifyPassword,
 } from "../auth/passwordService";
-import { createAccessToken as defaultCreateAccessToken } from "../auth/tokenService";
+import crypto from "node:crypto";
+
+import { hashRefreshToken } from "../auth/refreshTokenHash";
+import {
+  type CreatedRefreshToken,
+  createAccessToken as defaultCreateAccessToken,
+  createRefreshToken as defaultCreateRefreshToken,
+  verifyRefreshToken,
+} from "../auth/tokenService";
+import type { RefreshTokenRepository } from "../repositories/refreshTokenRepository";
 import {
   UserAlreadyExistsError,
   type UserRepository,
@@ -18,6 +27,8 @@ export interface AuthenticatedUser {
 
 export interface AuthResult {
   accessToken: string;
+  refreshToken: string;
+  refreshTokenExpiresAt: string;
   user: AuthenticatedUser;
 }
 
@@ -34,24 +45,54 @@ export type SignupResult =
 export interface AuthService {
   login(userId: string, password: string): Promise<AuthResult | null>;
   signup(input: SignupInput): Promise<SignupResult>;
+  refresh(refreshToken: string): Promise<AuthResult | null>;
+  logout(refreshToken: string): Promise<void>;
 }
 
 export interface AuthServiceDependencies {
   verifyPassword(password: string, hash: string): Promise<boolean>;
   hashPassword(password: string): Promise<string>;
   createAccessToken(userId: string, nickname: string): string;
+  createRefreshToken(userId: string): CreatedRefreshToken;
 }
 
 export function createAuthService(
   userRepository: UserRepository,
+  refreshTokenRepository: RefreshTokenRepository,
   overrides: Partial<AuthServiceDependencies> = {},
 ): AuthService {
   const dependencies: AuthServiceDependencies = {
     verifyPassword: defaultVerifyPassword,
     hashPassword: defaultHashPassword,
     createAccessToken: defaultCreateAccessToken,
+    createRefreshToken: defaultCreateRefreshToken,
     ...overrides,
   };
+
+  async function issueTokens(user: { id: string; nickname: string }): Promise<AuthResult> {
+    const refresh = dependencies.createRefreshToken(user.id);
+    await refreshTokenRepository.save({
+      tokenId: refresh.tokenId,
+      tokenHash: hashRefreshToken(refresh.token),
+      userId: user.id,
+      createdAt: new Date().toISOString(),
+      expiresAt: refresh.expiresAt,
+    });
+
+    return {
+      accessToken: dependencies.createAccessToken(user.id, user.nickname),
+      refreshToken: refresh.token,
+      refreshTokenExpiresAt: refresh.expiresAt,
+      user: { userId: user.id, nickname: user.nickname },
+    };
+  }
+
+  function hashesMatch(left: string, right: string): boolean {
+    const leftBuffer = Buffer.from(left, "hex");
+    const rightBuffer = Buffer.from(right, "hex");
+    return leftBuffer.length === rightBuffer.length
+      && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+  }
 
   async function login(userId: string, password: string): Promise<AuthResult | null> {
     const user = await userRepository.findById(userId);
@@ -64,10 +105,7 @@ export function createAuthService(
       return null;
     }
 
-    return {
-      accessToken: dependencies.createAccessToken(user.id, user.nickname),
-      user: { userId: user.id, nickname: user.nickname },
-    };
+    return issueTokens(user);
   }
 
   async function signup(input: SignupInput): Promise<SignupResult> {
@@ -83,10 +121,7 @@ export function createAuthService(
 
       return {
         success: true,
-        data: {
-          accessToken: dependencies.createAccessToken(user.id, user.nickname),
-          user: { userId: user.id, nickname: user.nickname },
-        },
+        data: await issueTokens(user),
       };
     } catch (error) {
       if (error instanceof UserAlreadyExistsError) {
@@ -96,5 +131,51 @@ export function createAuthService(
     }
   }
 
-  return { login, signup };
+  async function refresh(refreshToken: string): Promise<AuthResult | null> {
+    let payload;
+    try {
+      payload = verifyRefreshToken(refreshToken)
+    } catch {
+      return null
+    }
+
+    const storedToken = await refreshTokenRepository.findByTokenId(payload.tokenId);
+
+    if (!storedToken) return null;
+
+    if (storedToken.revokedAt) {
+      return null;
+    }
+
+    if (new Date(storedToken.expiresAt).getTime() <= Date.now()) {
+      return null;
+    }
+
+    const incomingHash = hashRefreshToken(refreshToken)
+
+    if (storedToken.userId !== payload.sub || !hashesMatch(incomingHash, storedToken.tokenHash)) {
+      return null;
+    }
+
+    const user = await userRepository.findById(payload.sub);
+
+    if (!user) return null;
+
+    if (!await refreshTokenRepository.revoke(storedToken.tokenId)) {
+      return null;
+    }
+
+    return issueTokens(user);
+  }
+
+  async function logout(refreshToken: string): Promise<void> {
+    try {
+      const payload = verifyRefreshToken(refreshToken);
+      await refreshTokenRepository.revoke(payload.tokenId);
+    } catch {
+      // An expired or malformed cookie still needs to be cleared by the handler.
+    }
+  }
+
+  return { login, signup, refresh, logout };
 }

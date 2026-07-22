@@ -27,15 +27,16 @@ describe("public index", () => {
     expect(() => new Function(script)).not.toThrow();
   });
 
-  it("uses login and room sections instead of manual token registration", async () => {
+  it("uses login, signup, and chat sections instead of manual token registration", async () => {
     const html = await readPublicIndex();
 
-    expect(html).toContain('id="loginSection"');
+    expect(html).toContain('id="authSection"');
+    expect(html).toContain('id="loginForm"');
     expect(html).toContain('id="loginUserIdInput"');
-    expect(html).toContain('id="loginButton"');
+    expect(html).toContain('id="loginSubmitButton"');
     expect(html).toContain('id="logoutButton"');
-    expect(html).toContain('id="roomSection"');
-    expect(html).toContain('id="joinRoomButton"');
+    expect(html).toContain('id="chatSection"');
+    expect(html).toContain('id="connectButton"');
     expect(html).not.toContain("tokenInput");
     expect(html).not.toContain("nicknameInput");
     expect(html).not.toContain("connectBtn");
@@ -46,8 +47,8 @@ describe("public index", () => {
     const script = extractInlineScript(await readPublicIndex());
 
     expect(script).toContain("let accessToken = null;");
-    expect(script).toContain("let loggedInUser = null;");
-    expect(script).toContain("let pendingRoomId = null;");
+    expect(script).toContain("let currentUser = null;");
+    expect(script).toContain("let currentRoomId = null;");
     expect(script).not.toContain("let registeredUserId");
     expect(script).not.toContain("let registeredNickname");
   });
@@ -55,36 +56,38 @@ describe("public index", () => {
   it("posts credentials to /login and stores the returned access token", async () => {
     const script = extractInlineScript(await readPublicIndex());
 
-    expect(script).toContain('fetch("/login"');
+    expect(script).toContain('requestJson("/login"');
     expect(script).toContain("userId,");
-    expect(script).toContain("password,");
-    expect(script).toContain("accessToken = data.accessToken;");
-    expect(script).toContain("loggedInUser = data.user;");
+    expect(script).toContain("JSON.stringify({ userId, password })");
+    expect(script).toContain("accessToken = result.accessToken;");
+    expect(script).toContain("currentUser = result.user;");
     expect(script).not.toContain("/auth/login");
     expect(script).not.toContain("data.token");
   });
 
   it("connects WebSocket during room join and registers with the JWT", async () => {
     const script = extractInlineScript(await readPublicIndex());
-    const joinRoomIndex = script.indexOf("async function joinRoom()");
-    const connectIndex = script.indexOf("await connectWebSocket();", joinRoomIndex);
+    const joinRoomIndex = script.indexOf("function connectToRoom(roomId,");
+    const connectIndex = script.indexOf("new WebSocket(WEBSOCKET_URL)", joinRoomIndex);
     const registerIndex = script.indexOf('type: "register"', joinRoomIndex);
 
     expect(joinRoomIndex).toBeGreaterThanOrEqual(0);
     expect(connectIndex).toBeGreaterThan(joinRoomIndex);
     expect(registerIndex).toBeGreaterThan(connectIndex);
     expect(script).toContain("token: accessToken,");
-    expect(script).not.toContain("nickname: loggedInUser.nickname,");
-    expect(script).toContain("room_id: roomId,");
+    expect(script).not.toContain("nickname: currentUser.nickname,");
+    expect(script).toContain("room_id: currentRoomId,");
   });
 
-  it("resets auth UI when the server rejects or expires the JWT", async () => {
+  it("refreshes expired access tokens and resets auth UI when refresh fails", async () => {
     const script = extractInlineScript(await readPublicIndex());
 
-    expect(script).toContain('data.code === "INVALID_ACCESS_TOKEN"');
-    expect(script).toContain('data.code === "ACCESS_TOKEN_EXPIRED"');
+    expect(script).toContain('message.code === "INVALID_ACCESS_TOKEN"');
+    expect(script).toContain('message.code === "ACCESS_TOKEN_EXPIRED"');
+    expect(script).toContain('requestJson("/refresh"');
+    expect(script).toContain('requestJson("/logout"');
     expect(script).toContain("accessToken = null;");
-    expect(script).toContain("loggedInUser = null;");
-    expect(script).toContain("socket?.close();");
+    expect(script).toContain("currentUser = null;");
+    expect(script).toContain("socket.close(");
   });
 });

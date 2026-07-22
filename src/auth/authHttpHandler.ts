@@ -5,10 +5,11 @@ import type { z } from "zod";
 import { loginRequestSchema } from "../schemas/loginSchema";
 import { signupRequestSchema } from "../schemas/signupSchema";
 import type { AuthService } from "../service/authService";
+import { getCookie } from "../http/cookieUtils";
 
 const DEFAULT_MAX_BODY_BYTES = 16 * 1024;
 
-class BodyTooLargeError extends Error {}
+class BodyTooLargeError extends Error { }
 
 interface LoginRateLimitOptions {
   maxAttempts: number;
@@ -134,6 +135,34 @@ function createLoginLimiter(
   };
 }
 
+
+function createRefreshTokenCookie(refreshToken: string, expiresAt: string): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  const maxAge = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1_000));
+  return [
+    `refresh_token=${encodeURIComponent(refreshToken)}`,
+    "HttpOnly",
+    "Path=/",
+    "SameSite=Strict",
+    `Max-Age=${maxAge}`,
+    secure,
+  ]
+    .filter(Boolean)
+    .join("; ")
+}
+
+function clearRefreshTokenCookie(): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return [
+    "refresh_token=",
+    "HttpOnly",
+    "Path=/",
+    "SameSite=Strict",
+    "Max-Age=0",
+    secure,
+  ].join("; ")
+}
+
 export function createAuthHttpHandler(
   authService: AuthService,
   options: AuthHttpHandlerOptions = {},
@@ -153,7 +182,7 @@ export function createAuthHttpHandler(
       `http://${request.headers.host ?? "localhost"}`,
     );
 
-    if (url.pathname !== "/login" && url.pathname !== "/signup") {
+    if (!["/login", "/signup", "/refresh", "/logout"].includes(url.pathname)) {
       return false;
     }
 
@@ -187,7 +216,44 @@ export function createAuthHttpHandler(
       }
 
       limiter.reset(accountKey);
-      sendJson(response, 200, result);
+
+      const { refreshToken, refreshTokenExpiresAt, ...responseBody } = result;
+
+      sendJson(response, 200, responseBody, {
+        "Cache-Control": "no-store",
+        "Set-Cookie": createRefreshTokenCookie(refreshToken, refreshTokenExpiresAt),
+      });
+      return true;
+    }
+
+    if (url.pathname === "/refresh") {
+      const refreshToken = getCookie(request, "refresh_token");
+      if (!refreshToken) {
+        sendJson(response, 401, { message: "Refresh Token이 없습니다." })
+        return true;
+      }
+
+      const result = await authService.refresh(refreshToken)
+      if (!result) {
+        sendJson(response, 401, { message: "Refresh Token이 유효하지 않습니다." }, { "Cache-Control": "no-store", "Set-Cookie": clearRefreshTokenCookie() });
+        return true;
+      }
+
+      const { refreshToken: nextRefreshToken, refreshTokenExpiresAt, ...responseBody } = result;
+      sendJson(response, 200, responseBody, {
+        "Cache-Control": "no-store",
+        "Set-Cookie": createRefreshTokenCookie(nextRefreshToken, refreshTokenExpiresAt),
+      });
+      return true;
+    }
+
+    if (url.pathname === "/logout") {
+      const refreshToken = getCookie(request, "refresh_token");
+      if (refreshToken) await authService.logout(refreshToken);
+      sendJson(response, 204, undefined, {
+        "Cache-Control": "no-store",
+        "Set-Cookie": clearRefreshTokenCookie(),
+      });
       return true;
     }
 
@@ -200,7 +266,11 @@ export function createAuthHttpHandler(
       return true;
     }
 
-    sendJson(response, 201, result.data);
+    const { refreshToken, refreshTokenExpiresAt, ...responseBody } = result.data;
+    sendJson(response, 201, responseBody, {
+      "Cache-Control": "no-store",
+      "Set-Cookie": createRefreshTokenCookie(refreshToken, refreshTokenExpiresAt),
+    });
     return true;
   };
 }
