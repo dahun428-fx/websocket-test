@@ -1,5 +1,5 @@
 export {
   createApplication,
   type Application,
-  type ApplicationOptions,
+  type CreateApplicationOptions,
 } from "./application";

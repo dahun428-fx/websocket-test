@@ -15,12 +15,15 @@ import createRoomService from "../service/roomService";
 import type { MessageHandlers, SendError, SendJson } from "../types/handler";
 import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
+import type { AccessTokenPayload } from "../types/auth";
 
 export interface ChatDependencies {
   messageRepository: MessageRepository;
   heartbeatIntervalMs: number;
   maxPayloadBytes: number;
   createTimestamp?: () => string;
+  verifyAccessToken(token: string): AccessTokenPayload;
+  heartbeatDebug: boolean;
 }
 
 export interface ChatRuntime {
@@ -78,6 +81,7 @@ export function attachChatRuntime(
       sendError,
       sendRoomHistory,
       createTimestamp,
+      verifyAccessToken: dependencies.verifyAccessToken,
     }),
     chat: createChatHandler({
       roomService,
@@ -154,7 +158,7 @@ export function attachChatRuntime(
     });
     socket.on("pong", () => {
       socket.isAlive = true;
-      logHeartbeat("pong", socket);
+      logHeartbeat("pong", socket, dependencies.heartbeatDebug);
     });
     socket.on("close", () => handleClose(socket));
     socket.on("error", (error) => {
@@ -164,7 +168,11 @@ export function attachChatRuntime(
     });
   });
 
-  const heartbeatTimer = startHeartbeat(webSocketServer, dependencies.heartbeatIntervalMs);
+  const heartbeatTimer = startHeartbeat(
+    webSocketServer,
+    dependencies.heartbeatIntervalMs,
+    dependencies.heartbeatDebug,
+  );
   let closed = false;
 
   return {

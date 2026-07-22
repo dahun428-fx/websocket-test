@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createAccessToken } from "../auth/tokenService";
+import { createTokenService } from "../auth/tokenService";
 import type { MessageRepository } from "../repositories/messageRepository";
 import type { RoomService } from "../service/roomService";
 import type { SendError, SendJson } from "../types/handler";
@@ -49,17 +49,19 @@ function createMessageRepository(): MessageRepository {
   };
 }
 
-function createToken(userId = "user-1", nickname = "neo"): string {
-  return createAccessToken(userId, nickname);
-}
-
-afterEach(() => {
-  delete process.env.JWT_ACCESS_SECRET;
+const tokenService = createTokenService({
+  accessTokenSecret: "access-test-secret",
+  accessTokenExpiresIn: "15m",
+  refreshTokenSecret: "refresh-test-secret",
+  refreshTokenExpiresIn: "7d",
 });
+
+function createToken(userId = "user-1", nickname = "neo"): string {
+  return tokenService.createAccessToken(userId, nickname);
+}
 
 describe("message handlers", () => {
   it("registers using only the authenticated token nickname", async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
     const socket = createSocket();
     const sendJson: SendJson = vi.fn(async () => undefined);
     const handler = createRegisterHandler({
@@ -68,6 +70,7 @@ describe("message handlers", () => {
       sendError: vi.fn(async () => undefined),
       sendRoomHistory: vi.fn(async () => undefined),
       createTimestamp: () => "2026-01-01T00:00:00.000Z",
+      verifyAccessToken: tokenService.verifyAccessToken,
     });
 
     await expect(handler(socket, {
@@ -81,7 +84,6 @@ describe("message handlers", () => {
   });
 
   it("rejects a token without a nickname", async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
     const socket = createSocket();
     const sendError: SendError = vi.fn(async () => undefined);
     const handler = createRegisterHandler({
@@ -90,6 +92,7 @@ describe("message handlers", () => {
       sendError,
       sendRoomHistory: vi.fn(async () => undefined),
       createTimestamp: () => "timestamp",
+      verifyAccessToken: tokenService.verifyAccessToken,
     });
     const token = jwt.sign({ sub: "user-1" }, "test-secret");
 
@@ -103,7 +106,6 @@ describe("message handlers", () => {
   });
 
   it("rolls back and closes the socket when history delivery fails", async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
     const socket = createSocket();
     const roomService = createRoomService();
     const handler = createRegisterHandler({
@@ -112,6 +114,7 @@ describe("message handlers", () => {
       sendError: vi.fn(async () => undefined),
       sendRoomHistory: vi.fn(async () => { throw new Error("history unavailable"); }),
       createTimestamp: () => "timestamp",
+      verifyAccessToken: tokenService.verifyAccessToken,
     });
 
     await expect(handler(socket, {

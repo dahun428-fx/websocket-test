@@ -3,29 +3,30 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 
-import { createAuthHttpHandler, type AuthHttpHandlerOptions } from "./auth/authHttpHandler";
+import { createAuthHttpHandler, type AuthHttpHandlerRuntimeOptions } from "./auth/authHttpHandler";
+import { createTokenService } from "./auth/tokenService";
 import { attachChatRuntime, type ChatRuntime } from "./chat/chatRuntime";
 import { openDatabase, type DatabaseConnection } from "./database/database";
 import { createMessageRepository } from "./repositories/messageRepository";
 import { createUserRepository } from "./repositories/userRepository";
 import { createAuthService } from "./service/authService";
 import { createRefreshTokenRepository } from "./repositories/refreshTokenRepository";
+import type { AppConfig } from "./config";
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 16 * 1024;
+const DEFAULT_HTTP_MAX_BODY_BYTES = 16 * 1024;
 
-export interface ApplicationOptions {
-  databasePath: string;
-  host?: string;
-  authHttp?: AuthHttpHandlerOptions;
-  heartbeatIntervalMs?: number;
+export interface CreateApplicationOptions {
+  config: AppConfig;
+  authHttpRuntime?: AuthHttpHandlerRuntimeOptions;
   websocketMaxPayloadBytes?: number;
   publicIndexPath?: string;
 }
 
 export interface Application {
   server: http.Server;
-  start(port?: number): Promise<number>;
+  start(): Promise<number>;
   stop(): Promise<void>;
 }
 
@@ -39,13 +40,24 @@ function sendJson(response: http.ServerResponse, statusCode: number, payload: un
   response.end(JSON.stringify(payload));
 }
 
-export async function createApplication(options: ApplicationOptions): Promise<Application> {
-  const database: DatabaseConnection = await openDatabase(options.databasePath);
+export async function createApplication(options: CreateApplicationOptions): Promise<Application> {
+  const { config } = options;
+  const database: DatabaseConnection = await openDatabase(config.database.path);
   const userRepository = createUserRepository(database);
   const refreshTokenRepository = createRefreshTokenRepository(database);
   const messageRepository = createMessageRepository(database);
-  const authService = createAuthService(userRepository, refreshTokenRepository);
-  const authHandler = createAuthHttpHandler(authService, options.authHttp);
+  const tokenService = createTokenService({
+    accessTokenSecret: config.auth.accessToken.secret,
+    accessTokenExpiresIn: config.auth.accessToken.expiresIn,
+    refreshTokenSecret: config.auth.refreshToken.secret,
+    refreshTokenExpiresIn: config.auth.refreshToken.expiresIn,
+  });
+  const authService = createAuthService(userRepository, refreshTokenRepository, tokenService);
+  const authHandler = createAuthHttpHandler(authService, {
+    maxBodyBytes: DEFAULT_HTTP_MAX_BODY_BYTES,
+    loginRateLimit: config.rateLimit,
+    refreshTokenCookie: config.auth.refreshToken.cookie,
+  }, options.authHttpRuntime);
   const publicIndexPath = options.publicIndexPath
     ?? path.join(__dirname, "..", "public", "index.html");
 
@@ -82,7 +94,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   let stopped = false;
   let stopPromise: Promise<void> | null = null;
 
-  async function start(port = 0): Promise<number> {
+  async function start(): Promise<number> {
     if (stopped) throw new Error("종료된 애플리케이션은 다시 시작할 수 없습니다.");
     if (server.listening) return (server.address() as AddressInfo).port;
 
@@ -98,12 +110,14 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
         };
         server.once("error", onError);
         server.once("listening", onListening);
-        server.listen(port, options.host ?? "127.0.0.1");
+        server.listen(config.server.port, config.server.host);
       });
       chatRuntime = attachChatRuntime(server, {
         messageRepository,
-        heartbeatIntervalMs: options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+        heartbeatIntervalMs: config.heartbeat.interval_ms,
         maxPayloadBytes: options.websocketMaxPayloadBytes ?? DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES,
+        verifyAccessToken: tokenService.verifyAccessToken,
+        heartbeatDebug: config.heartbeat.debug,
       });
       return (server.address() as AddressInfo).port;
     } catch (error) {

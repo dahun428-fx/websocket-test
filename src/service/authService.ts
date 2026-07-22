@@ -7,9 +7,7 @@ import crypto from "node:crypto";
 import { hashRefreshToken } from "../auth/refreshTokenHash";
 import {
   type CreatedRefreshToken,
-  createAccessToken as defaultCreateAccessToken,
-  createRefreshToken as defaultCreateRefreshToken,
-  verifyRefreshToken,
+  type TokenService,
 } from "../auth/tokenService";
 import type { RefreshTokenRepository } from "../repositories/refreshTokenRepository";
 import {
@@ -54,18 +52,21 @@ export interface AuthServiceDependencies {
   hashPassword(password: string): Promise<string>;
   createAccessToken(userId: string, nickname: string): string;
   createRefreshToken(userId: string): CreatedRefreshToken;
+  verifyRefreshToken: TokenService["verifyRefreshToken"];
 }
 
 export function createAuthService(
   userRepository: UserRepository,
   refreshTokenRepository: RefreshTokenRepository,
-  overrides: Partial<AuthServiceDependencies> = {},
+  tokenService: TokenService,
+  overrides: Partial<Pick<AuthServiceDependencies, "verifyPassword" | "hashPassword">> = {},
 ): AuthService {
   const dependencies: AuthServiceDependencies = {
     verifyPassword: defaultVerifyPassword,
     hashPassword: defaultHashPassword,
-    createAccessToken: defaultCreateAccessToken,
-    createRefreshToken: defaultCreateRefreshToken,
+    createAccessToken: tokenService.createAccessToken,
+    createRefreshToken: tokenService.createRefreshToken,
+    verifyRefreshToken: tokenService.verifyRefreshToken,
     ...overrides,
   };
 
@@ -134,7 +135,7 @@ export function createAuthService(
   async function refresh(refreshToken: string): Promise<AuthResult | null> {
     let payload;
     try {
-      payload = verifyRefreshToken(refreshToken)
+      payload = dependencies.verifyRefreshToken(refreshToken)
     } catch {
       return null
     }
@@ -170,7 +171,7 @@ export function createAuthService(
 
   async function logout(refreshToken: string): Promise<void> {
     try {
-      const payload = verifyRefreshToken(refreshToken);
+      const payload = dependencies.verifyRefreshToken(refreshToken);
       await refreshTokenRepository.revoke(payload.tokenId);
     } catch {
       // An expired or malformed cookie still needs to be cleared by the handler.

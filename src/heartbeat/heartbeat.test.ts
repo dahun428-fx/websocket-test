@@ -32,7 +32,7 @@ describe("runHeartbeat", () => {
     const client = createClient({ isAlive: true });
     const wss = { clients: new Set([client]) } as unknown as WebSocketServer;
 
-    runHeartbeat(wss);
+    runHeartbeat(wss, false);
 
     expect(client.ping).toHaveBeenCalledOnce();
     expect(client.terminate).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ describe("runHeartbeat", () => {
     const client = createClient({ isAlive: false });
     const wss = { clients: new Set([client]) } as unknown as WebSocketServer;
 
-    runHeartbeat(wss);
+    runHeartbeat(wss, false);
 
     expect(client.terminate).toHaveBeenCalledOnce();
     expect(client.ping).not.toHaveBeenCalled();
@@ -56,7 +56,7 @@ describe("runHeartbeat", () => {
     });
     const wss = { clients: new Set([client]) } as unknown as WebSocketServer;
 
-    runHeartbeat(wss);
+    runHeartbeat(wss, false);
 
     expect(client.terminate).not.toHaveBeenCalled();
     expect(client.ping).not.toHaveBeenCalled();
@@ -85,19 +85,18 @@ describe("logHeartbeat", () => {
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const client = createClient({ isAlive: true });
 
-    logHeartbeat("ping", client);
+    logHeartbeat("ping", client, false);
 
     expect(debug).not.toHaveBeenCalled();
   });
 
   it("logs ping and connection context when heartbeat debugging is enabled", () => {
-    vi.stubEnv("HEARTBEAT_DEBUG", "true");
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const client = createClient({ isAlive: true });
     client.nickname = "neo";
     client.room_id = "room-1";
 
-    logHeartbeat("ping", client);
+    logHeartbeat("ping", client, true);
 
     expect(debug).toHaveBeenCalledWith("[heartbeat] ping 전송", {
       nickname: "neo",
@@ -106,11 +105,10 @@ describe("logHeartbeat", () => {
   });
 
   it("logs pong receipt when heartbeat debugging is enabled", () => {
-    vi.stubEnv("HEARTBEAT_DEBUG", "true");
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const client = createClient({ isAlive: true });
 
-    logHeartbeat("pong", client);
+    logHeartbeat("pong", client, true);
 
     expect(debug).toHaveBeenCalledWith("[heartbeat] pong 수신", {
       nickname: null,

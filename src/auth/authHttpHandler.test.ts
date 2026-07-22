@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthService } from "../service/authService";
 import { createAuthHttpHandler } from "./authHttpHandler";
 
+const handlerConfig = {
+  maxBodyBytes: 256,
+  loginRateLimit: { maxAttempts: 2, windowMs: 60_000 },
+  refreshTokenCookie: { name: "refresh_token", maxAgeSeconds: Number.MAX_SAFE_INTEGER, secure: false },
+};
+
 function createAuthService(): AuthService {
   const authResult = {
     accessToken: "token",
@@ -35,10 +41,7 @@ describe("createAuthHttpHandler", () => {
 
   beforeEach(async () => {
     authService = createAuthService();
-    const handler = createAuthHttpHandler(authService, {
-      maxBodyBytes: 256,
-      loginRateLimit: { maxAttempts: 2, windowMs: 60_000 },
-    });
+    const handler = createAuthHttpHandler(authService, handlerConfig);
     server = http.createServer((request, response) => {
       void handler(request, response).then((handled) => {
         if (!handled) {
@@ -74,6 +77,7 @@ describe("createAuthHttpHandler", () => {
   it("accepts a body at the byte limit and rejects one byte over it", async () => {
     const body = JSON.stringify({ userId: "valid", password: "test1234" });
     const handler = createAuthHttpHandler(authService, {
+      ...handlerConfig,
       maxBodyBytes: Buffer.byteLength(body),
       loginRateLimit: { maxAttempts: 10, windowMs: 60_000 },
     });
@@ -123,6 +127,23 @@ describe("createAuthHttpHandler", () => {
       accessToken: "token",
       user: { userId: "valid", nickname: "neo" },
     });
+  });
+
+  it("uses the configured refresh cookie name", async () => {
+    const handler = createAuthHttpHandler(authService, {
+      ...handlerConfig,
+      refreshTokenCookie: { name: "session", maxAgeSeconds: 60, secure: false },
+    });
+    server.removeAllListeners("request");
+    server.on("request", (request, response) => void handler(request, response));
+
+    const response = await fetch(`${baseUrl}/refresh`, {
+      method: "POST",
+      headers: { Cookie: "session=refresh-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("session=refresh-token");
   });
 
   it("revokes the refresh token and clears the cookie on logout", async () => {

@@ -11,6 +11,7 @@ import { createApplication, type Application } from "./application";
 import { hashPassword } from "./auth/passwordService";
 import { openDatabase } from "./database/database";
 import { createUserRepository } from "./repositories/userRepository";
+import { createTestConfig } from "./test/createTestConfig";
 
 describe("Application", () => {
   let application: Application;
@@ -18,8 +19,6 @@ describe("Application", () => {
   let testDirectory: string;
 
   beforeEach(async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
-    process.env.JWT_REFRESH_SECRET = "refresh-test-secret";
     testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
     const databasePath = path.join(testDirectory, "server-test.db");
     const database = await openDatabase(databasePath);
@@ -32,12 +31,8 @@ describe("Application", () => {
     await database.close();
 
     application = await createApplication({
-      databasePath,
+      config: createTestConfig(databasePath),
       websocketMaxPayloadBytes: 64,
-      authHttp: {
-        maxBodyBytes: 256,
-        loginRateLimit: { maxAttempts: 10, windowMs: 60_000 },
-      },
     });
     const port = await application.start();
     baseUrl = `http://127.0.0.1:${port}`;
@@ -46,8 +41,6 @@ describe("Application", () => {
   afterEach(async () => {
     await application.stop();
     await rm(testDirectory, { recursive: true, force: true });
-    delete process.env.JWT_ACCESS_SECRET;
-    delete process.env.JWT_REFRESH_SECRET;
   });
 
   it("returns an access token for valid login credentials", async () => {
@@ -145,10 +138,10 @@ describe("Application", () => {
     const port = (blocker.address() as AddressInfo).port;
     const secondDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
     const second = await createApplication({
-      databasePath: path.join(secondDirectory, "failed-start.db"),
+      config: createTestConfig(path.join(secondDirectory, "failed-start.db"), port),
     });
 
-    await expect(second.start(port)).rejects.toMatchObject({ code: "EADDRINUSE" });
+    await expect(second.start()).rejects.toMatchObject({ code: "EADDRINUSE" });
     await expect(second.stop()).resolves.toBeUndefined();
 
     await new Promise<void>((resolve, reject) => blocker.close((error) => error ? reject(error) : resolve()));

@@ -1,6 +1,6 @@
 import { TokenExpiredError } from "jsonwebtoken";
 
-import { verifyAccessToken } from "../auth/tokenService";
+import type { AccessTokenPayload } from "../types/auth";
 import type { RegisterMessage } from "../types/messages";
 import type { RoomService } from "../service/roomService";
 import type { ChatWebSocket } from "../types/websocket";
@@ -12,10 +12,18 @@ export interface RegisterHandlerDependencies {
   sendError: SendError;
   sendRoomHistory(socket: ChatWebSocket, roomId: string): Promise<void>;
   createTimestamp(): string;
+  verifyAccessToken(token: string): AccessTokenPayload;
 }
 
 export function createRegisterHandler(dependencies: RegisterHandlerDependencies) {
-  const { roomService, sendJson, sendError, sendRoomHistory, createTimestamp } = dependencies;
+  const {
+    roomService,
+    sendJson,
+    sendError,
+    sendRoomHistory,
+    createTimestamp,
+    verifyAccessToken,
+  } = dependencies;
 
   return async function handleRegister(
     socket: ChatWebSocket,

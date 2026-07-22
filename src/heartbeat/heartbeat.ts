@@ -5,7 +5,7 @@ import type { ChatWebSocket } from "../types/websocket";
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 type HeartbeatEvent = "ping" | "pong";
 
-export function resolveHeartbeatIntervalMs(value: string | undefined): number {
+export function resolveHeartbeatIntervalMs(value: string | number | undefined): number {
   const intervalMs = Number(value);
 
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
@@ -15,8 +15,12 @@ export function resolveHeartbeatIntervalMs(value: string | undefined): number {
   return intervalMs;
 }
 
-export function logHeartbeat(event: HeartbeatEvent, ws: ChatWebSocket): void {
-  if (process.env.HEARTBEAT_DEBUG !== "true") {
+export function logHeartbeat(
+  event: HeartbeatEvent,
+  ws: ChatWebSocket,
+  debug: boolean,
+): void {
+  if (!debug) {
     return;
   }
 
@@ -27,7 +31,7 @@ export function logHeartbeat(event: HeartbeatEvent, ws: ChatWebSocket): void {
   });
 }
 
-export function runHeartbeat(wss: WebSocketServer): void {
+export function runHeartbeat(wss: WebSocketServer, debug: boolean): void {
   wss.clients.forEach((client) => {
     const ws = client as ChatWebSocket;
 
@@ -45,7 +49,7 @@ export function runHeartbeat(wss: WebSocketServer): void {
     }
 
     ws.isAlive = false;
-    logHeartbeat("ping", ws);
+    logHeartbeat("ping", ws, debug);
     ws.ping();
   });
 }
@@ -53,6 +57,7 @@ export function runHeartbeat(wss: WebSocketServer): void {
 export function startHeartbeat(
   wss: WebSocketServer,
   intervalMs: number,
+  debug: boolean,
 ): NodeJS.Timeout {
-  return setInterval(() => runHeartbeat(wss), intervalMs);
+  return setInterval(() => runHeartbeat(wss, debug), intervalMs);
 }

@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { verifyAccessToken } from "../auth/tokenService";
+import { createTokenService } from "../auth/tokenService";
 import type { RefreshTokenRepository } from "../repositories/refreshTokenRepository";
 import type { UserRepository } from "../repositories/userRepository";
 import { createAuthService } from "./authService";
@@ -26,10 +26,14 @@ function createUserRepository(): UserRepository {
   };
 }
 
-afterEach(() => {
-  delete process.env.JWT_ACCESS_SECRET;
-  delete process.env.JWT_REFRESH_SECRET;
-});
+function createTestTokenService() {
+  return createTokenService({
+    accessTokenSecret: "access-test-secret",
+    accessTokenExpiresIn: "15m",
+    refreshTokenSecret: "refresh-test-secret",
+    refreshTokenExpiresIn: "7d",
+  });
+}
 
 function createRefreshTokenRepository(): RefreshTokenRepository {
   return {
@@ -41,10 +45,9 @@ function createRefreshTokenRepository(): RefreshTokenRepository {
 
 describe("authService", () => {
   it("returns a login result with a verifiable access token for valid credentials", async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
-    process.env.JWT_REFRESH_SECRET = "refresh-test-secret";
+    const tokenService = createTestTokenService();
     const userRepository = createUserRepository();
-    const authService = createAuthService(userRepository, createRefreshTokenRepository());
+    const authService = createAuthService(userRepository, createRefreshTokenRepository(), tokenService);
 
     const result = await authService.login("user-100", "test1234");
 
@@ -58,7 +61,7 @@ describe("authService", () => {
         nickname: "neo",
       },
     });
-    expect(verifyAccessToken(result?.accessToken ?? "")).toEqual({
+    expect(tokenService.verifyAccessToken(result?.accessToken ?? "")).toEqual({
       sub: "user-100",
       nickname: "neo",
       type: "access",
@@ -70,6 +73,7 @@ describe("authService", () => {
     const authService = createAuthService(
       createUserRepository(),
       createRefreshTokenRepository(),
+      createTestTokenService(),
       { verifyPassword },
     );
 
@@ -79,14 +83,16 @@ describe("authService", () => {
   });
 
   it("returns null for an invalid password", async () => {
-    const authService = createAuthService(createUserRepository(), createRefreshTokenRepository());
+    const authService = createAuthService(
+      createUserRepository(),
+      createRefreshTokenRepository(),
+      createTestTokenService(),
+    );
 
     await expect(authService.login("user-100", "wrong-password")).resolves.toBeNull();
   });
 
   it("rotates a refresh token once and revokes it on logout", async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
-    process.env.JWT_REFRESH_SECRET = "refresh-test-secret";
     const tokens = new Map<string, {
       tokenId: string;
       userId: string;
@@ -108,7 +114,11 @@ describe("authService", () => {
         return true;
       }),
     };
-    const authService = createAuthService(createUserRepository(), refreshTokenRepository);
+    const authService = createAuthService(
+      createUserRepository(),
+      refreshTokenRepository,
+      createTestTokenService(),
+    );
 
     const login = await authService.login("user-100", "test1234");
     const refreshed = await authService.refresh(login?.refreshToken ?? "");

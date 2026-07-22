@@ -1,17 +1,15 @@
 import "dotenv/config";
-
-import path from "node:path";
+import { createConfig } from "./config";
 
 import { createApplication } from "./application";
-import { resolveHeartbeatIntervalMs } from "./heartbeat/heartbeat";
 
 async function main(): Promise<void> {
+  const config = createConfig();
+
   const application = await createApplication({
-    databasePath: process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "chat.db"),
-    host: process.env.HOST ?? "0.0.0.0",
-    heartbeatIntervalMs: resolveHeartbeatIntervalMs(process.env.HEARTBEAT_INTERVAL_MS),
+    config,
   });
-  const port = await application.start(Number(process.env.PORT) || 3010);
+  const port = await application.start();
   console.log(`서버 실행: http://localhost:${port}`);
 
   let shuttingDown = false;

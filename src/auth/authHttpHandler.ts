@@ -7,18 +7,26 @@ import { signupRequestSchema } from "../schemas/signupSchema";
 import type { AuthService } from "../service/authService";
 import { getCookie } from "../http/cookieUtils";
 
-const DEFAULT_MAX_BODY_BYTES = 16 * 1024;
-
 class BodyTooLargeError extends Error { }
 
-interface LoginRateLimitOptions {
+export interface LoginRateLimitOptions {
   maxAttempts: number;
   windowMs: number;
 }
 
-export interface AuthHttpHandlerOptions {
-  maxBodyBytes?: number;
-  loginRateLimit?: LoginRateLimitOptions;
+export interface RefreshTokenCookieOptions {
+  name: string;
+  maxAgeSeconds: number;
+  secure: boolean;
+}
+
+export interface AuthHttpHandlerConfig {
+  maxBodyBytes: number;
+  loginRateLimit: LoginRateLimitOptions;
+  refreshTokenCookie: RefreshTokenCookieOptions;
+}
+
+export interface AuthHttpHandlerRuntimeOptions {
   now?: () => number;
 }
 
@@ -136,11 +144,16 @@ function createLoginLimiter(
 }
 
 
-function createRefreshTokenCookie(refreshToken: string, expiresAt: string): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  const maxAge = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1_000));
+function createRefreshTokenCookie(
+  refreshToken: string,
+  expiresAt: string,
+  options: RefreshTokenCookieOptions,
+): string {
+  const secure = options.secure ? "; Secure" : "";
+  const tokenMaxAge = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1_000));
+  const maxAge = Math.min(tokenMaxAge, options.maxAgeSeconds);
   return [
-    `refresh_token=${encodeURIComponent(refreshToken)}`,
+    `${options.name}=${encodeURIComponent(refreshToken)}`,
     "HttpOnly",
     "Path=/",
     "SameSite=Strict",
@@ -151,10 +164,10 @@ function createRefreshTokenCookie(refreshToken: string, expiresAt: string): stri
     .join("; ")
 }
 
-function clearRefreshTokenCookie(): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+function clearRefreshTokenCookie(options: RefreshTokenCookieOptions): string {
+  const secure = options.secure ? "; Secure" : "";
   return [
-    "refresh_token=",
+    `${options.name}=`,
     "HttpOnly",
     "Path=/",
     "SameSite=Strict",
@@ -165,13 +178,14 @@ function clearRefreshTokenCookie(): string {
 
 export function createAuthHttpHandler(
   authService: AuthService,
-  options: AuthHttpHandlerOptions = {},
+  config: AuthHttpHandlerConfig,
+  options: AuthHttpHandlerRuntimeOptions = {},
 ) {
-  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const limiter = createLoginLimiter(
-    options.loginRateLimit ?? { maxAttempts: 10, windowMs: 15 * 60_000 },
+    config.loginRateLimit,
     options.now ?? Date.now,
   );
+  const { maxBodyBytes, refreshTokenCookie } = config;
 
   return async function handleAuthRequest(
     request: IncomingMessage,
@@ -221,13 +235,13 @@ export function createAuthHttpHandler(
 
       sendJson(response, 200, responseBody, {
         "Cache-Control": "no-store",
-        "Set-Cookie": createRefreshTokenCookie(refreshToken, refreshTokenExpiresAt),
+        "Set-Cookie": createRefreshTokenCookie(refreshToken, refreshTokenExpiresAt, refreshTokenCookie),
       });
       return true;
     }
 
     if (url.pathname === "/refresh") {
-      const refreshToken = getCookie(request, "refresh_token");
+      const refreshToken = getCookie(request, refreshTokenCookie.name);
       if (!refreshToken) {
         sendJson(response, 401, { message: "Refresh Token이 없습니다." })
         return true;
@@ -235,24 +249,24 @@ export function createAuthHttpHandler(
 
       const result = await authService.refresh(refreshToken)
       if (!result) {
-        sendJson(response, 401, { message: "Refresh Token이 유효하지 않습니다." }, { "Cache-Control": "no-store", "Set-Cookie": clearRefreshTokenCookie() });
+        sendJson(response, 401, { message: "Refresh Token이 유효하지 않습니다." }, { "Cache-Control": "no-store", "Set-Cookie": clearRefreshTokenCookie(refreshTokenCookie) });
         return true;
       }
 
       const { refreshToken: nextRefreshToken, refreshTokenExpiresAt, ...responseBody } = result;
       sendJson(response, 200, responseBody, {
         "Cache-Control": "no-store",
-        "Set-Cookie": createRefreshTokenCookie(nextRefreshToken, refreshTokenExpiresAt),
+        "Set-Cookie": createRefreshTokenCookie(nextRefreshToken, refreshTokenExpiresAt, refreshTokenCookie),
       });
       return true;
     }
 
     if (url.pathname === "/logout") {
-      const refreshToken = getCookie(request, "refresh_token");
+      const refreshToken = getCookie(request, refreshTokenCookie.name);
       if (refreshToken) await authService.logout(refreshToken);
       sendJson(response, 204, undefined, {
         "Cache-Control": "no-store",
-        "Set-Cookie": clearRefreshTokenCookie(),
+        "Set-Cookie": clearRefreshTokenCookie(refreshTokenCookie),
       });
       return true;
     }
@@ -269,7 +283,7 @@ export function createAuthHttpHandler(
     const { refreshToken, refreshTokenExpiresAt, ...responseBody } = result.data;
     sendJson(response, 201, responseBody, {
       "Cache-Control": "no-store",
-      "Set-Cookie": createRefreshTokenCookie(refreshToken, refreshTokenExpiresAt),
+      "Set-Cookie": createRefreshTokenCookie(refreshToken, refreshTokenExpiresAt, refreshTokenCookie),
     });
     return true;
   };

@@ -1,20 +1,18 @@
 import "dotenv/config";
 
-import path from "node:path";
-
 import { hashPassword } from "../auth/passwordService";
+import { createConfig } from "../config";
 import { openDatabase } from "../database/database";
 import { createUserRepository, UserAlreadyExistsError } from "../repositories/userRepository";
 
 async function main(): Promise<void> {
-  const seedPassword = process.env.SEED_USER_PASSWORD;
+  const config = createConfig();
+  const seedPassword = config.seed.userPassword;
   if (!seedPassword) {
     throw new Error("SEED_USER_PASSWORD 환경변수가 필요합니다.");
   }
 
-  const database = await openDatabase(
-    process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "chat.db"),
-  );
+  const database = await openDatabase(config.database.path);
   const repository = createUserRepository(database);
 
   try {

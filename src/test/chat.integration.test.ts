@@ -9,6 +9,7 @@ import { createApplication, type Application } from "../application";
 import type { AuthResult } from "../service/authService";
 import type { ChatMessage, RegisterSuccessMessage, ServerMessage } from "../types/messages";
 import { closeWebSocket, waitForMessage, waitForOpen } from "./websocketTestUtils";
+import { createTestConfig } from "./createTestConfig";
 
 describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 흐름", () => {
   let application: Application;
@@ -18,14 +19,12 @@ describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 �
   const sockets: WebSocket[] = [];
 
   beforeAll(async () => {
-    process.env.JWT_ACCESS_SECRET = "access-test-secret";
-    process.env.JWT_REFRESH_SECRET = "refresh-test-secret";
     testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
 
     application = await createApplication({
-      databasePath: path.join(testDirectory, "chat-integration.db"),
-      authHttp: {
-        loginRateLimit: { maxAttempts: 100, windowMs: 60_000 },
+      config: {
+        ...createTestConfig(path.join(testDirectory, "chat-integration.db")),
+        rateLimit: { maxAttempts: 100, windowMs: 60_000 },
       },
     });
     const port = await application.start();
@@ -37,8 +36,6 @@ describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 �
     await Promise.all(sockets.map(closeWebSocket));
     await application.stop();
     await rm(testDirectory, { recursive: true, force: true });
-    delete process.env.JWT_ACCESS_SECRET;
-    delete process.env.JWT_REFRESH_SECRET;
   });
 
   async function signup(userId: string, nickname: string): Promise<AuthResult> {
