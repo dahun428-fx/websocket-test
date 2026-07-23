@@ -16,3 +16,20 @@ export const loginRequestSchema = z
   .strict();
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+export const loginSchema =
+  z.object({
+    userId:
+      z.string()
+        .trim()
+        .min(1),
+
+    password:
+      z.string()
+        .min(8),
+  });
+
+export type LoginInput =
+  z.infer<
+    typeof loginSchema
+  >;
