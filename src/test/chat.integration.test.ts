@@ -10,6 +10,7 @@ import type { AuthResult } from "../service/authService";
 import type { ChatMessage, RegisterSuccessMessage, ServerMessage } from "../types/messages";
 import { closeWebSocket, waitForMessage, waitForOpen } from "./websocketTestUtils";
 import { createTestConfig } from "./createTestConfig";
+import { createTestContainer } from "./createTestContainer";
 
 describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 흐름", () => {
   let application: Application;
@@ -21,12 +22,13 @@ describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 �
   beforeAll(async () => {
     testDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
 
-    application = await createApplication({
-      config: {
+    application = createApplication(await createTestContainer(
+      path.join(testDirectory, "chat-integration.db"),
+      { config: {
         ...createTestConfig(path.join(testDirectory, "chat-integration.db")),
         rateLimit: { maxAttempts: 100, windowMs: 60_000 },
-      },
-    });
+      } },
+    ));
     const port = await application.start();
     httpBaseUrl = `http://127.0.0.1:${port}`;
     websocketUrl = `ws://127.0.0.1:${port}`;

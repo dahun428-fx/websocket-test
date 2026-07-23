@@ -56,7 +56,7 @@ describe("createAuthHttpHandler", () => {
   beforeEach(async () => {
     authService = createAuthService();
     logger = createTestLogger();
-    const handler = createAuthHttpHandler(authService, handlerConfig);
+    const handler = createAuthHttpHandler({ authService, config: handlerConfig });
     server = http.createServer((request, response) => {
       void handler(request, response, { requestId: "request-123", logger }).then((handled) => {
         if (!handled) {
@@ -111,10 +111,13 @@ describe("createAuthHttpHandler", () => {
 
   it("accepts a body at the byte limit and rejects one byte over it", async () => {
     const body = JSON.stringify({ userId: "valid", password: "test1234" });
-    const handler = createAuthHttpHandler(authService, {
-      ...handlerConfig,
-      maxBodyBytes: Buffer.byteLength(body),
-      loginRateLimit: { maxAttempts: 10, windowMs: 60_000 },
+    const handler = createAuthHttpHandler({
+      authService,
+      config: {
+        ...handlerConfig,
+        maxBodyBytes: Buffer.byteLength(body),
+        loginRateLimit: { maxAttempts: 10, windowMs: 60_000 },
+      },
     });
     server.removeAllListeners("request");
     server.on("request", (request, response) => void handler(request, response, { requestId: "request-123", logger }));
@@ -165,9 +168,12 @@ describe("createAuthHttpHandler", () => {
   });
 
   it("uses the configured refresh cookie name", async () => {
-    const handler = createAuthHttpHandler(authService, {
-      ...handlerConfig,
-      refreshTokenCookie: { name: "session", maxAgeSeconds: 60, secure: false },
+    const handler = createAuthHttpHandler({
+      authService,
+      config: {
+        ...handlerConfig,
+        refreshTokenCookie: { name: "session", maxAgeSeconds: 60, secure: false },
+      },
     });
     server.removeAllListeners("request");
     server.on("request", (request, response) => void handler(request, response, { requestId: "request-123", logger }));

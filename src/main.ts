@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { createConfig } from "./config";
 
-import { createApplication } from "./application";
+import { createApplication, createApplicationContainer, registerShutdownSignals } from "./application";
 import { createJsonLogger } from "./logging/jsonLogger";
 
 const bootstrapLogger = createJsonLogger({
@@ -19,29 +19,10 @@ async function main(): Promise<void> {
     },
   });
 
-  const application = await createApplication({
-    config,
-  });
-  const port = await application.start();
-  logger.info("Server started", { port });
-
-  let shuttingDown = false;
-  const shutdown = async (signal: NodeJS.Signals) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info("Server shutdown started", { signal });
-    await application.stop();
-  };
-
-  const handleSignal = (signal: NodeJS.Signals) => {
-    void shutdown(signal).catch((error) => {
-      logger.error("Server shutdown failed", { error });
-      process.exitCode = 1;
-    });
-  };
-
-  process.once("SIGINT", () => handleSignal("SIGINT"));
-  process.once("SIGTERM", () => handleSignal("SIGTERM"));
+  const container = await createApplicationContainer({ config, logger });
+  const application = createApplication(container);
+  registerShutdownSignals(application, logger);
+  await application.start();
 }
 
 void main().catch((error: unknown) => {

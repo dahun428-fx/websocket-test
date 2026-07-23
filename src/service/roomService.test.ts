@@ -24,7 +24,7 @@ describe("roomService", () => {
         const closed = createClient("room-1", false);
         const otherRoom = createClient("room-2");
         const wss = { clients: new Set([first, closed, otherRoom]) } as unknown as WebSocketServer;
-        const service = createRoomService(wss);
+        const service = createRoomService({ webSocketServer: wss });
 
         expect(service.getConnectionCount("room-1")).toBe(1);
         expect(service.getClients("room-1")).toEqual([first]);
@@ -48,7 +48,7 @@ describe("roomService", () => {
                 otherRoomUser,
             ]),
         } as unknown as WebSocketServer;
-        const service = createRoomService(wss);
+        const service = createRoomService({ webSocketServer: wss });
 
         expect(service.getUserCount("room-1")).toBe(2);
         expect(service.getUserCount("unknown-room")).toBe(0);
@@ -59,7 +59,7 @@ describe("roomService", () => {
         const closed = createClient("room-1", false);
         const otherRoom = createClient("room-2");
         const wss = { clients: new Set([target, closed, otherRoom]) } as unknown as WebSocketServer;
-        const service = createRoomService(wss);
+        const service = createRoomService({ webSocketServer: wss });
 
         const sent = service.broadcastToRoom("room-1", {
             type: "notification",
@@ -89,7 +89,7 @@ describe("roomService", () => {
                 otherUserConnection,
             ]),
         } as unknown as WebSocketServer;
-        const service = createRoomService(wss);
+        const service = createRoomService({ webSocketServer: wss });
 
         expect(service.getUserConnections("user-100")).toEqual([
             firstUserConnection,

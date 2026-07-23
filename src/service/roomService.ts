@@ -14,7 +14,12 @@ export interface RoomService {
   broadcastToRoom(roomId: string, payload: ServerMessage): number;
 }
 
-function createRoomService(wss: WebSocketServer): RoomService {
+export interface CreateRoomServiceOptions {
+  webSocketServer: WebSocketServer;
+}
+
+function createRoomService(options: CreateRoomServiceOptions): RoomService {
+  const wss = options.webSocketServer;
   if (!wss || !wss.clients) {
     throw new Error("createRoomService에는 WebSocketServer 인스턴스가 필요합니다.");
   }

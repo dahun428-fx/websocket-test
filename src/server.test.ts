@@ -12,6 +12,7 @@ import { hashPassword } from "./auth/passwordService";
 import { openDatabase } from "./database/database";
 import { createUserRepository } from "./repositories/userRepository";
 import { createTestConfig } from "./test/createTestConfig";
+import { createTestContainer } from "./test/createTestContainer";
 
 describe("Application", () => {
   let application: Application;
@@ -30,10 +31,9 @@ describe("Application", () => {
     });
     await database.close();
 
-    application = await createApplication({
-      config: createTestConfig(databasePath),
+    application = createApplication(await createTestContainer(databasePath, {
       websocketMaxPayloadBytes: 64,
-    });
+    }));
     const port = await application.start();
     baseUrl = `http://127.0.0.1:${port}`;
   });
@@ -145,9 +145,10 @@ describe("Application", () => {
     await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
     const port = (blocker.address() as AddressInfo).port;
     const secondDirectory = await mkdtemp(path.join(os.tmpdir(), "websocket-test-"));
-    const second = await createApplication({
-      config: createTestConfig(path.join(secondDirectory, "failed-start.db"), port),
-    });
+    const second = createApplication(await createTestContainer(
+      path.join(secondDirectory, "failed-start.db"),
+      { config: createTestConfig(path.join(secondDirectory, "failed-start.db"), port) },
+    ));
 
     await expect(second.start()).rejects.toMatchObject({ code: "EADDRINUSE" });
     await expect(second.stop()).resolves.toBeUndefined();

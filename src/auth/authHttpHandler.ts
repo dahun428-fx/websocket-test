@@ -31,6 +31,12 @@ export interface AuthHttpHandlerRuntimeOptions {
   now?: () => number;
 }
 
+export interface CreateAuthHttpHandlerOptions {
+  authService: AuthService;
+  config: AuthHttpHandlerConfig;
+  runtime?: AuthHttpHandlerRuntimeOptions;
+}
+
 interface RateLimitEntry {
   attempts: number;
   resetAt: number;
@@ -178,13 +184,12 @@ function clearRefreshTokenCookie(options: RefreshTokenCookieOptions): string {
 }
 
 export function createAuthHttpHandler(
-  authService: AuthService,
-  config: AuthHttpHandlerConfig,
-  options: AuthHttpHandlerRuntimeOptions = {},
+  options: CreateAuthHttpHandlerOptions,
 ) {
+  const { authService, config, runtime = {} } = options;
   const limiter = createLoginLimiter(
     config.loginRateLimit,
-    options.now ?? Date.now,
+    runtime.now ?? Date.now,
   );
   const { maxBodyBytes, refreshTokenCookie } = config;
 

@@ -1,5 +1,8 @@
 export {
   createApplication,
+  createApplicationContainer,
+  registerShutdownSignals,
   type Application,
-  type CreateApplicationOptions,
-} from "./application";
+  type ApplicationContainer,
+  type CreateApplicationContainerOptions,
+} from "./application/index";

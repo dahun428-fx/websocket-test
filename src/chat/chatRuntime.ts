@@ -1,7 +1,6 @@
-import type http from "node:http";
 import { randomUUID } from "node:crypto";
 
-import WebSocket, { type RawData, WebSocketServer } from "ws";
+import WebSocket, { type RawData, type WebSocketServer } from "ws";
 
 import { dispatchMessage } from "../dispatcher/messageDispatcher";
 import { ERROR_MESSAGES, type ErrorCode } from "../errors/errorMessages";
@@ -13,7 +12,7 @@ import type { Logger } from "../logging/logger";
 import { parseClientMessage } from "../parser/messageParser";
 import { enqueueMessage } from "../queue/messageQueue";
 import type { MessageRepository } from "../repositories/messageRepository";
-import createRoomService from "../service/roomService";
+import type { RoomService } from "../service/roomService";
 import type { MessageHandlers, SendError, SendJson } from "../types/handler";
 import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
@@ -22,11 +21,11 @@ import type { AccessTokenPayload } from "../types/auth";
 export interface ChatDependencies {
   messageRepository: MessageRepository;
   heartbeatIntervalMs: number;
-  maxPayloadBytes: number;
   createTimestamp?: () => string;
   verifyAccessToken(token: string): AccessTokenPayload;
   heartbeatDebug: boolean;
   logger: Logger;
+  roomService: RoomService;
 }
 
 export interface ChatRuntime {
@@ -34,15 +33,14 @@ export interface ChatRuntime {
 }
 
 export function attachChatRuntime(
-  server: http.Server,
+  webSocketServer: WebSocketServer,
   dependencies: ChatDependencies,
 ): ChatRuntime {
   const createTimestamp = dependencies.createTimestamp ?? (() => new Date().toISOString());
-  const webSocketServer = new WebSocketServer({
-    server,
-    maxPayload: dependencies.maxPayloadBytes,
+  webSocketServer.on("error", (error) => {
+    dependencies.logger.error("WebSocket server error", { error });
   });
-  const roomService = createRoomService(webSocketServer);
+  const roomService = dependencies.roomService;
 
   const sendJson: SendJson = (socket, payload) => new Promise((resolve, reject) => {
     if (socket.readyState !== WebSocket.OPEN) {

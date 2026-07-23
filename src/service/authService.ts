@@ -55,19 +55,24 @@ export interface AuthServiceDependencies {
   verifyRefreshToken: TokenService["verifyRefreshToken"];
 }
 
+export interface CreateAuthServiceOptions {
+  userRepository: UserRepository;
+  refreshTokenRepository: RefreshTokenRepository;
+  tokenService: TokenService;
+  passwordService?: Partial<Pick<AuthServiceDependencies, "verifyPassword" | "hashPassword">>;
+}
+
 export function createAuthService(
-  userRepository: UserRepository,
-  refreshTokenRepository: RefreshTokenRepository,
-  tokenService: TokenService,
-  overrides: Partial<Pick<AuthServiceDependencies, "verifyPassword" | "hashPassword">> = {},
+  options: CreateAuthServiceOptions,
 ): AuthService {
+  const { userRepository, refreshTokenRepository, tokenService } = options;
   const dependencies: AuthServiceDependencies = {
     verifyPassword: defaultVerifyPassword,
     hashPassword: defaultHashPassword,
     createAccessToken: tokenService.createAccessToken,
     createRefreshToken: tokenService.createRefreshToken,
     verifyRefreshToken: tokenService.verifyRefreshToken,
-    ...overrides,
+    ...options.passwordService,
   };
 
   async function issueTokens(user: { id: string; nickname: string }): Promise<AuthResult> {

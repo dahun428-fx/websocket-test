@@ -47,7 +47,11 @@ describe("authService", () => {
   it("returns a login result with a verifiable access token for valid credentials", async () => {
     const tokenService = createTestTokenService();
     const userRepository = createUserRepository();
-    const authService = createAuthService(userRepository, createRefreshTokenRepository(), tokenService);
+    const authService = createAuthService({
+      userRepository,
+      refreshTokenRepository: createRefreshTokenRepository(),
+      tokenService,
+    });
 
     const result = await authService.login("user-100", "test1234");
 
@@ -70,12 +74,12 @@ describe("authService", () => {
 
   it("returns null for an unknown user", async () => {
     const verifyPassword = vi.fn(async () => false);
-    const authService = createAuthService(
-      createUserRepository(),
-      createRefreshTokenRepository(),
-      createTestTokenService(),
-      { verifyPassword },
-    );
+    const authService = createAuthService({
+      userRepository: createUserRepository(),
+      refreshTokenRepository: createRefreshTokenRepository(),
+      tokenService: createTestTokenService(),
+      passwordService: { verifyPassword },
+    });
 
     await expect(authService.login("unknown-user", "test1234")).resolves.toBeNull();
     expect(verifyPassword).toHaveBeenCalledOnce();
@@ -83,11 +87,11 @@ describe("authService", () => {
   });
 
   it("returns null for an invalid password", async () => {
-    const authService = createAuthService(
-      createUserRepository(),
-      createRefreshTokenRepository(),
-      createTestTokenService(),
-    );
+    const authService = createAuthService({
+      userRepository: createUserRepository(),
+      refreshTokenRepository: createRefreshTokenRepository(),
+      tokenService: createTestTokenService(),
+    });
 
     await expect(authService.login("user-100", "wrong-password")).resolves.toBeNull();
   });
@@ -114,11 +118,11 @@ describe("authService", () => {
         return true;
       }),
     };
-    const authService = createAuthService(
-      createUserRepository(),
+    const authService = createAuthService({
+      userRepository: createUserRepository(),
       refreshTokenRepository,
-      createTestTokenService(),
-    );
+      tokenService: createTestTokenService(),
+    });
 
     const login = await authService.login("user-100", "test1234");
     const refreshed = await authService.refresh(login?.refreshToken ?? "");
