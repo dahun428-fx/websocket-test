@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createTokenService } from "../auth/tokenService";
+import {
+  InvalidCredentialsError,
+  InvalidRefreshTokenError,
+  RefreshTokenReusedError,
+  UserAlreadyExistsError,
+} from "../application/errors/authErrors";
 import type { RefreshTokenRepository } from "../repositories/refreshTokenRepository";
-import type { UserRepository } from "../repositories/userRepository";
+import {
+  DuplicateUserIdRepositoryError,
+  type UserRepository,
+} from "../repositories/userRepository";
 import { createAuthService } from "./authService";
 
 const TEST_PASSWORD_HASH =
@@ -53,7 +62,10 @@ describe("authService", () => {
       tokenService,
     });
 
-    const result = await authService.login("user-100", "test1234");
+    const result = await authService.login({
+      userId: "user-100",
+      password: "test1234",
+    });
 
     expect(userRepository.findById).toHaveBeenCalledWith("user-100");
     expect(result).toEqual({
@@ -65,14 +77,14 @@ describe("authService", () => {
         nickname: "neo",
       },
     });
-    expect(tokenService.verifyAccessToken(result?.accessToken ?? "")).toEqual({
+    expect(tokenService.verifyAccessToken(result.accessToken)).toEqual({
       sub: "user-100",
       nickname: "neo",
       type: "access",
     });
   });
 
-  it("returns null for an unknown user", async () => {
+  it("throws InvalidCredentialsError for an unknown user", async () => {
     const verifyPassword = vi.fn(async () => false);
     const authService = createAuthService({
       userRepository: createUserRepository(),
@@ -81,19 +93,82 @@ describe("authService", () => {
       passwordService: { verifyPassword },
     });
 
-    await expect(authService.login("unknown-user", "test1234")).resolves.toBeNull();
+    await expect(authService.login({
+      userId: "unknown-user",
+      password: "test1234",
+    })).rejects.toBeInstanceOf(InvalidCredentialsError);
     expect(verifyPassword).toHaveBeenCalledOnce();
     expect(verifyPassword).toHaveBeenCalledWith("test1234", expect.stringMatching(/^\$2b\$12\$/));
   });
 
-  it("returns null for an invalid password", async () => {
+  it("throws the same InvalidCredentialsError for an invalid password", async () => {
     const authService = createAuthService({
       userRepository: createUserRepository(),
       refreshTokenRepository: createRefreshTokenRepository(),
       tokenService: createTestTokenService(),
     });
 
-    await expect(authService.login("user-100", "wrong-password")).resolves.toBeNull();
+    await expect(authService.login({
+      userId: "user-100",
+      password: "wrong-password",
+    })).rejects.toBeInstanceOf(InvalidCredentialsError);
+  });
+
+  it("maps duplicate repository errors and preserves unexpected failures", async () => {
+    const duplicateRepository = createUserRepository();
+    vi.mocked(duplicateRepository.create).mockRejectedValue(
+      new DuplicateUserIdRepositoryError("user-100"),
+    );
+    const duplicateService = createAuthService({
+      userRepository: duplicateRepository,
+      refreshTokenRepository: createRefreshTokenRepository(),
+      tokenService: createTestTokenService(),
+    });
+
+    await expect(duplicateService.signup({
+      userId: "user-100",
+      nickname: "neo",
+      password: "test1234",
+    })).rejects.toBeInstanceOf(UserAlreadyExistsError);
+
+    const databaseError = new Error("database unavailable");
+    vi.mocked(duplicateRepository.create).mockRejectedValue(databaseError);
+    await expect(duplicateService.signup({
+      userId: "user-200",
+      nickname: "trinity",
+      password: "test1234",
+    })).rejects.toBe(databaseError);
+  });
+
+  it("throws InvalidRefreshTokenError for malformed tokens", async () => {
+    const authService = createAuthService({
+      userRepository: createUserRepository(),
+      refreshTokenRepository: createRefreshTokenRepository(),
+      tokenService: createTestTokenService(),
+    });
+
+    await expect(authService.refresh({
+      refreshToken: "malformed-token",
+    })).rejects.toBeInstanceOf(InvalidRefreshTokenError);
+  });
+
+  it("does not swallow repository failures during logout", async () => {
+    const databaseError = new Error("database unavailable");
+    const refreshTokenRepository = createRefreshTokenRepository();
+    vi.mocked(refreshTokenRepository.revoke).mockRejectedValue(databaseError);
+    const authService = createAuthService({
+      userRepository: createUserRepository(),
+      refreshTokenRepository,
+      tokenService: createTestTokenService(),
+    });
+    const login = await authService.login({
+      userId: "user-100",
+      password: "test1234",
+    });
+
+    await expect(authService.logout({
+      refreshToken: login.refreshToken,
+    })).rejects.toBe(databaseError);
   });
 
   it("rotates a refresh token once and revokes it on logout", async () => {
@@ -124,13 +199,22 @@ describe("authService", () => {
       tokenService: createTestTokenService(),
     });
 
-    const login = await authService.login("user-100", "test1234");
-    const refreshed = await authService.refresh(login?.refreshToken ?? "");
+    const login = await authService.login({
+      userId: "user-100",
+      password: "test1234",
+    });
+    const refreshed = await authService.refresh({
+      refreshToken: login.refreshToken,
+    });
 
-    expect(refreshed?.refreshToken).not.toBe(login?.refreshToken);
-    await expect(authService.refresh(login?.refreshToken ?? "")).resolves.toBeNull();
+    expect(refreshed.refreshToken).not.toBe(login.refreshToken);
+    await expect(authService.refresh({
+      refreshToken: login.refreshToken,
+    })).rejects.toBeInstanceOf(RefreshTokenReusedError);
 
-    await authService.logout(refreshed?.refreshToken ?? "");
-    await expect(authService.refresh(refreshed?.refreshToken ?? "")).resolves.toBeNull();
+    await authService.logout({ refreshToken: refreshed.refreshToken });
+    await expect(authService.refresh({
+      refreshToken: refreshed.refreshToken,
+    })).rejects.toBeInstanceOf(RefreshTokenReusedError);
   });
 });

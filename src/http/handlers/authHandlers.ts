@@ -2,6 +2,11 @@ import type { LoginInput } from "../../schemas/loginSchema";
 import type { SignupRequest } from "../../schemas/signupSchema";
 import type { AuthResult, AuthService } from "../../service/authService";
 import {
+    InvalidCredentialsError,
+    InvalidRefreshTokenError,
+    RefreshTokenReusedError,
+} from "../../application/errors/authErrors";
+import {
     clearRefreshTokenCookie,
     createRefreshTokenCookie,
     getCookie,
@@ -105,18 +110,21 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
             });
         }
 
-        const result = await authService.login(input.userId, input.password);
-        if (!result) {
-            context.logger.warn("Login failed", {
+        let result: AuthResult;
+        try {
+            result = await authService.login({
                 userId: input.userId,
-                reason: "invalid_credentials",
+                password: input.password,
             });
-            throw new HttpError({
-                statusCode: 401,
-                code: "INVALID_CREDENTIALS",
-                message: "사용자 ID 또는 비밀번호가 올바르지 않습니다.",
-                headers: { "Cache-Control": "no-store" },
-            });
+        } catch (error) {
+            if (error instanceof InvalidCredentialsError) {
+                context.logger.warn("Login failed", {
+                    userId: input.userId,
+                    reason: "invalid_credentials",
+                });
+                context.setHeader("Cache-Control", "no-store");
+            }
+            throw error;
         }
 
         limiter.reset(accountKey);
@@ -125,16 +133,13 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
     };
 
     const signup: RouteHandler = async (context) => {
-        const result = await authService.signup(context.body as SignupRequest);
-        if (!result.success) {
-            throw new HttpError({
-                statusCode: 409,
-                code: "USER_ID_ALREADY_EXISTS",
-                message: "이미 사용 중인 사용자 ID입니다.",
-            });
-        }
-
-        sendAuthResult(context, 201, result.data, refreshTokenCookie, now);
+        const body = context.body as SignupRequest;
+        const result = await authService.signup({
+            userId: body.userId,
+            nickname: body.nickname,
+            password: body.password,
+        });
+        sendAuthResult(context, 201, result, refreshTokenCookie, now);
     };
 
     const refresh: RouteHandler = async (context) => {
@@ -148,17 +153,21 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
             });
         }
 
-        const result = await authService.refresh(token);
-        if (!result) {
-            throw new HttpError({
-                statusCode: 401,
-                code: "INVALID_REFRESH_TOKEN",
-                message: "Refresh Token이 유효하지 않습니다.",
-                headers: {
-                    "Cache-Control": "no-store",
-                    "Set-Cookie": clearRefreshTokenCookie(refreshTokenCookie),
-                },
-            });
+        let result: AuthResult;
+        try {
+            result = await authService.refresh({ refreshToken: token });
+        } catch (error) {
+            if (
+                error instanceof InvalidRefreshTokenError
+                || error instanceof RefreshTokenReusedError
+            ) {
+                context.setHeader("Cache-Control", "no-store");
+                context.setHeader(
+                    "Set-Cookie",
+                    clearRefreshTokenCookie(refreshTokenCookie),
+                );
+            }
+            throw error;
         }
 
         sendAuthResult(context, 200, result, refreshTokenCookie, now);
@@ -167,7 +176,7 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
     const logout: RouteHandler = async (context) => {
         const token = getCookie(context.req, refreshTokenCookie.name);
         if (token) {
-            await authService.logout(token);
+            await authService.logout({ refreshToken: token });
         }
         context.setHeader("Cache-Control", "no-store");
         context.setHeader("Set-Cookie", clearRefreshTokenCookie(refreshTokenCookie));

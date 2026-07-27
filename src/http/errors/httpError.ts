@@ -1,4 +1,6 @@
+import { ApplicationError } from "../../application/errors/applicationError";
 import type { HttpContext } from "../context/httpContext";
+import { mapApplicationErrorToHttp } from "./applicationErrorMapper";
 
 export interface HttpErrorOptions {
     statusCode: number;
@@ -27,6 +29,23 @@ export class HttpError extends Error {
 
 export function handleHttpError(context: HttpContext, error: unknown): void {
     if (context.res.writableEnded) {
+        return;
+    }
+
+    if (error instanceof ApplicationError) {
+        const mapped = mapApplicationErrorToHttp(error);
+        context.logger.warn("Application request failed", {
+            statusCode: mapped.statusCode,
+            errorCode: mapped.code,
+        });
+        context.json(mapped.statusCode, {
+            error: {
+                code: mapped.code,
+                message: mapped.message,
+                details: mapped.details,
+                requestId: context.requestId,
+            },
+        });
         return;
     }
 

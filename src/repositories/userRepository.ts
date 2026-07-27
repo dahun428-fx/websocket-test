@@ -1,10 +1,31 @@
 import type { DatabaseConnection } from "../database/database";
 
-export class UserAlreadyExistsError extends Error {
-  constructor(userId: string) {
-    super(`이미 존재하는 사용자입니다: ${userId}`);
-    this.name = "UserAlreadyExistsError";
+export class DuplicateUserIdRepositoryError extends Error {
+  constructor(
+    readonly userId: string,
+    options: { cause?: unknown } = {},
+  ) {
+    super("User ID already exists.", { cause: options.cause });
+    this.name = "DuplicateUserIdRepositoryError";
   }
+}
+
+function isSqliteUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = "code" in error ? error.code : undefined;
+  if (
+    code === "SQLITE_CONSTRAINT_PRIMARYKEY"
+    || code === "SQLITE_CONSTRAINT_UNIQUE"
+  ) {
+    return true;
+  }
+
+  return code === "SQLITE_CONSTRAINT"
+    && error instanceof Error
+    && /(?:UNIQUE|PRIMARY KEY) constraint failed/i.test(error.message);
 }
 
 export interface User {
@@ -69,11 +90,8 @@ export function createUserRepository(database: DatabaseConnection): UserReposito
         input.createdAt,
       );
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("UNIQUE constraint failed")
-      ) {
-        throw new UserAlreadyExistsError(input.id);
+      if (isSqliteUniqueConstraintError(error)) {
+        throw new DuplicateUserIdRepositoryError(input.id, { cause: error });
       }
       throw error;
     }

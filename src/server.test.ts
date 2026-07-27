@@ -90,12 +90,20 @@ describe("Application", () => {
 
     expect(refreshResponse.status).toBe(200);
     expect(secondCookie).toContain("refresh_token=");
-    await expect(
-      fetch(`${baseUrl}/refresh`, {
-        method: "POST",
-        headers: { Cookie: firstCookie ?? "" },
-      }),
-    ).resolves.toMatchObject({ status: 401 });
+    const reusedResponse = await fetch(`${baseUrl}/refresh`, {
+      method: "POST",
+      headers: {
+        Cookie: firstCookie ?? "",
+        "X-Request-ID": "reused-refresh",
+      },
+    });
+    expect(reusedResponse.status).toBe(401);
+    await expect(reusedResponse.json()).resolves.toMatchObject({
+      error: {
+        code: "REFRESH_TOKEN_REUSED",
+        requestId: "reused-refresh",
+      },
+    });
 
     const logoutResponse = await fetch(`${baseUrl}/logout`, {
       method: "POST",
@@ -120,7 +128,14 @@ describe("Application", () => {
     });
 
     expect((await request()).status).toBe(201);
-    expect((await request()).status).toBe(409);
+    const duplicate = await request();
+    expect(duplicate.status).toBe(409);
+    await expect(duplicate.json()).resolves.toMatchObject({
+      error: {
+        code: "USER_ALREADY_EXISTS",
+        requestId: expect.any(String),
+      },
+    });
   });
 
   it("rejects malformed JSON and exposes the POST method contract", async () => {

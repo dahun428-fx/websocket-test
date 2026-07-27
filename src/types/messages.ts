@@ -1,4 +1,5 @@
 import type { ErrorCode } from "../errors/errorMessages";
+import type { ApplicationErrorCode } from "../application/errors/applicationError";
 export type {
     ChatInputMessage,
     ClientMessage,
@@ -66,7 +67,7 @@ export interface UserNotificationMessage {
 
 export interface ErrorMessage {
     type: "error";
-    code: ErrorCode;
+    code: ErrorCode | ApplicationErrorCode;
     message: string;
     createdAt: string;
 }

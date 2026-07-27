@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import WebSocket, { type RawData, type WebSocketServer } from "ws";
 
+import { ApplicationError } from "../application/errors/applicationError";
 import { dispatchMessage } from "../dispatcher/messageDispatcher";
 import { ERROR_MESSAGES, type ErrorCode } from "../errors/errorMessages";
 import { createChatHandler } from "../handlers/chatHandler";
@@ -17,6 +18,7 @@ import type { MessageHandlers, SendError, SendJson } from "../types/handler";
 import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
 import type { AccessTokenPayload } from "../types/auth";
+import { mapApplicationErrorToWebSocket } from "../websocket/applicationErrorMapper";
 
 export interface ChatDependencies {
   messageRepository: MessageRepository;
@@ -64,6 +66,21 @@ export function attachChatRuntime(
   ): Promise<void> {
     await sendError(socket, code).catch((error) => {
       logger.error("WebSocket error response failed", { error });
+    });
+  }
+
+  async function sendApplicationErrorSafely(
+    socket: ChatWebSocket,
+    logger: Logger,
+    error: ApplicationError,
+  ): Promise<void> {
+    await sendJson(
+      socket,
+      mapApplicationErrorToWebSocket(error, createTimestamp()),
+    ).catch((sendFailure) => {
+      logger.error("WebSocket application error response failed", {
+        error: sendFailure,
+      });
     });
   }
 
@@ -116,6 +133,14 @@ export function attachChatRuntime(
     try {
       await dispatchMessage(socket, message, handlers);
     } catch (error) {
+      if (error instanceof ApplicationError) {
+        logger.warn("WebSocket operation failed", {
+          errorCode: error.code,
+        });
+        await sendApplicationErrorSafely(socket, logger, error);
+        return;
+      }
+
       logger.error("WebSocket message handling failed", { error });
       await sendErrorSafely(socket, logger, "INTERNAL_SERVER_ERROR");
     }

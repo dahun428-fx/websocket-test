@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { InvalidCredentialsError } from "../../application/errors/authErrors";
 import type { HttpContext } from "../context/httpContext";
 import { handleHttpError, HttpError } from "./httpError";
 
@@ -21,6 +22,21 @@ function createContext() {
 }
 
 describe("handleHttpError", () => {
+    it("maps application errors without exposing transport details to services", () => {
+        const context = createContext();
+
+        handleHttpError(context, new InvalidCredentialsError());
+
+        expect(context.json).toHaveBeenCalledWith(401, {
+            error: {
+                code: "INVALID_CREDENTIALS",
+                message: "아이디 또는 비밀번호가 올바르지 않습니다.",
+                details: undefined,
+                requestId: "request-123",
+            },
+        });
+    });
+
     it("serializes expected HTTP errors with the request ID", () => {
         const context = createContext();
 

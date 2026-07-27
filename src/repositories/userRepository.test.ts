@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase, type DatabaseConnection } from "../database/database";
 import {
   createUserRepository,
-  UserAlreadyExistsError,
+  DuplicateUserIdRepositoryError,
   type UserRepository,
 } from "./userRepository";
 
@@ -41,7 +41,7 @@ describe("createUserRepository", () => {
     });
   });
 
-  it("maps concurrent duplicate inserts to a domain error", async () => {
+  it("maps concurrent duplicate inserts to a repository error", async () => {
     const input = {
       id: "user-100",
       nickname: "neo",
@@ -56,6 +56,14 @@ describe("createUserRepository", () => {
 
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     const rejection = results.find((result) => result.status === "rejected");
-    expect(rejection).toMatchObject({ reason: expect.any(UserAlreadyExistsError) });
+    expect(rejection).toMatchObject({
+      reason: expect.objectContaining({
+        name: "DuplicateUserIdRepositoryError",
+        userId: "user-100",
+      }),
+    });
+    expect(rejection).toMatchObject({
+      reason: expect.any(DuplicateUserIdRepositoryError),
+    });
   });
 });

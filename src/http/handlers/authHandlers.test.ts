@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+    InvalidCredentialsError,
+    InvalidRefreshTokenError,
+} from "../../application/errors/authErrors";
 import type { AuthService } from "../../service/authService";
 import type { HttpContext } from "../context/httpContext";
 import { createAuthHandlers } from "./authHandlers";
@@ -80,7 +84,7 @@ describe("auth route handlers", () => {
 
     it("limits repeated login attempts", async () => {
         const authService = createAuthService();
-        vi.mocked(authService.login).mockResolvedValue(null);
+        vi.mocked(authService.login).mockRejectedValue(new InvalidCredentialsError());
         const handlers = createHandlers(authService, 1);
         const first = createContext({ userId: "user-100", password: "invalid-password" });
         const second = createContext({ userId: "user-100", password: "invalid-password" });
@@ -97,14 +101,14 @@ describe("auth route handlers", () => {
 
     it("clears an invalid refresh-token cookie", async () => {
         const authService = createAuthService();
-        vi.mocked(authService.refresh).mockResolvedValue(null);
+        vi.mocked(authService.refresh).mockRejectedValue(new InvalidRefreshTokenError());
         const { context } = createContext(undefined, "refresh_token=invalid-token");
 
-        await expect(createHandlers(authService).refresh(context)).rejects.toMatchObject({
-            code: "INVALID_REFRESH_TOKEN",
-            headers: {
-                "Set-Cookie": expect.stringContaining("Max-Age=0"),
-            },
-        });
+        await expect(createHandlers(authService).refresh(context))
+            .rejects.toBeInstanceOf(InvalidRefreshTokenError);
+        expect(context.setHeader).toHaveBeenCalledWith(
+            "Set-Cookie",
+            expect.stringContaining("Max-Age=0"),
+        );
     });
 });

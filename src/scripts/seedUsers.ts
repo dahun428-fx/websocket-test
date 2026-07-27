@@ -3,7 +3,10 @@ import "dotenv/config";
 import { hashPassword } from "../auth/passwordService";
 import { createConfig } from "../config";
 import { openDatabase } from "../database/database";
-import { createUserRepository, UserAlreadyExistsError } from "../repositories/userRepository";
+import {
+  createUserRepository,
+  DuplicateUserIdRepositoryError,
+} from "../repositories/userRepository";
 
 async function main(): Promise<void> {
   const config = createConfig();
@@ -26,7 +29,7 @@ async function main(): Promise<void> {
         });
         console.log(`${id} 사용자를 생성했습니다.`);
       } catch (error) {
-        if (!(error instanceof UserAlreadyExistsError)) throw error;
+        if (!(error instanceof DuplicateUserIdRepositoryError)) throw error;
         console.log(`${id} 사용자는 이미 존재합니다.`);
       }
     }
