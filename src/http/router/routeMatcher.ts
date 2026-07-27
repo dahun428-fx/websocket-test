@@ -4,18 +4,18 @@ export interface RouteMatch {
 }
 
 function splitPath(path: string): string[] {
-    return path.split("/").filter(Boolean)
+    return path.split("/").filter(Boolean);
 }
 
 export function matchRoute(routePath: string, requestPath: string): RouteMatch {
     const routeSegments = splitPath(routePath);
     const requestSegments = splitPath(requestPath);
 
-    if (routeSegments.length != requestSegments.length) {
+    if (routeSegments.length !== requestSegments.length) {
         return {
             matched: false,
-            params: {}
-        }
+            params: {},
+        };
     }
 
     const params: Record<string, string> = {};
@@ -25,22 +25,28 @@ export function matchRoute(routePath: string, requestPath: string): RouteMatch {
         const requestSegment = requestSegments[index];
 
         if (routeSegment.startsWith(":")) {
-            const paramterName = routeSegment.slice(1);
-            params[paramterName] = decodeURIComponent(requestSegment)
+            const parameterName = routeSegment.slice(1);
+            try {
+                params[parameterName] = decodeURIComponent(requestSegment);
+            } catch {
+                return {
+                    matched: false,
+                    params: {},
+                };
+            }
             continue;
         }
 
         if (routeSegment !== requestSegment) {
             return {
                 matched: false,
-                params: {}
-            }
+                params: {},
+            };
         }
     }
 
     return {
         matched: true,
-        params: {}
-    }
-
+        params,
+    };
 }

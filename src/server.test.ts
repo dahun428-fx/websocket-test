@@ -46,6 +46,7 @@ describe("Application", () => {
   it("returns an access token for valid login credentials", async () => {
     const response = await fetch(`${baseUrl}/login`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: "user-100", password: "test1234" }),
     });
 
@@ -63,11 +64,18 @@ describe("Application", () => {
     });
 
     expect(response.headers.get("x-request-id")).toBe("request-123");
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "ROUTE_NOT_FOUND",
+        requestId: "request-123",
+      },
+    });
   });
 
   it("rotates refresh tokens and invalidates them on logout", async () => {
     const loginResponse = await fetch(`${baseUrl}/login`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: "user-100", password: "test1234" }),
     });
     const firstCookie = loginResponse.headers.get("set-cookie");
@@ -107,6 +115,7 @@ describe("Application", () => {
   it("creates a user from a JSON signup request and rejects duplicates", async () => {
     const request = () => fetch(`${baseUrl}/signup`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: "user-200", nickname: "trinity", password: "test1234" }),
     });
 
@@ -115,12 +124,102 @@ describe("Application", () => {
   });
 
   it("rejects malformed JSON and exposes the POST method contract", async () => {
-    const malformed = await fetch(`${baseUrl}/login`, { method: "POST", body: "{" });
+    const malformed = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": "malformed-request",
+      },
+      body: "{",
+    });
     const wrongMethod = await fetch(`${baseUrl}/login`);
 
     expect(malformed.status).toBe(400);
+    await expect(malformed.json()).resolves.toMatchObject({
+      error: {
+        code: "INVALID_JSON",
+        requestId: "malformed-request",
+      },
+    });
     expect(wrongMethod.status).toBe(405);
     expect(wrongMethod.headers.get("allow")).toBe("POST");
+  });
+
+  it("validates login input before calling the handler", async () => {
+    const response = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "", password: "" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "VALIDATION_FAILED",
+        requestId: expect.any(String),
+      },
+    });
+  });
+
+  it("rejects unsupported and oversized request bodies", async () => {
+    const unsupported = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "user-100", password: "test1234" }),
+    });
+    const oversized = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "user-100", password: "x".repeat(17_000) }),
+    });
+
+    expect(unsupported.status).toBe(415);
+    await expect(unsupported.json()).resolves.toMatchObject({
+      error: { code: "UNSUPPORTED_MEDIA_TYPE", requestId: expect.any(String) },
+    });
+    expect(oversized.status).toBe(413);
+    await expect(oversized.json()).resolves.toMatchObject({
+      error: { code: "REQUEST_BODY_TOO_LARGE", requestId: expect.any(String) },
+    });
+  });
+
+  it("returns a structured error for invalid credentials", async () => {
+    const response = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": "invalid-login",
+      },
+      body: JSON.stringify({ userId: "user-100", password: "incorrect" }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "INVALID_CREDENTIALS",
+        requestId: "invalid-login",
+      },
+    });
+  });
+
+  it("authenticates bearer tokens on protected routes", async () => {
+    const unauthorized = await fetch(`${baseUrl}/me`);
+    expect(unauthorized.status).toBe(401);
+
+    const login = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "user-100", password: "test1234" }),
+    });
+    const body = await login.json() as { accessToken: string };
+    const authorized = await fetch(`${baseUrl}/me`, {
+      headers: { Authorization: `Bearer ${body.accessToken}` },
+    });
+
+    expect(authorized.status).toBe(200);
+    await expect(authorized.json()).resolves.toEqual({
+      user: { userId: "user-100", nickname: "neo" },
+    });
   });
 
   it("closes WebSocket connections that exceed maxPayload", async () => {

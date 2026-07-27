@@ -5,8 +5,10 @@ import { createTokenService } from "../auth/tokenService";
 import { attachChatRuntime, type ChatRuntime } from "../chat/chatRuntime";
 import type { AppConfig } from "../config";
 import { openDatabase, type DatabaseConnection } from "../database/database";
-import { createAuthHttpHandler, type AuthHttpHandlerRuntimeOptions } from "../auth/authHttpHandler";
-import { createHttpServer } from "../http/httpServer";
+import { createHttpServer } from "../http/createHttpServer";
+import { registerRoutes } from "../http/registerRoutes";
+import { createHttpRouter } from "../http/router/router";
+import type { AuthHandlerRuntimeOptions } from "../http/handlers/authHandlers";
 import type { Logger } from "../logging/logger";
 import { createMessageRepository, type MessageRepository } from "../repositories/messageRepository";
 import { createRefreshTokenRepository, type RefreshTokenRepository } from "../repositories/refreshTokenRepository";
@@ -43,7 +45,7 @@ export interface CreateApplicationContainerOptions {
   logger: Logger;
   websocketMaxPayloadBytes?: number;
   publicIndexPath?: string;
-  authHttpRuntime?: AuthHttpHandlerRuntimeOptions;
+  authHttpRuntime?: AuthHandlerRuntimeOptions;
 }
 
 export async function createApplicationContainer(
@@ -61,21 +63,22 @@ export async function createApplicationContainer(
     refreshTokenExpiresIn: config.auth.refreshToken.expiresIn,
   });
   const authService = createAuthService({ userRepository, refreshTokenRepository, tokenService });
-  const authHandler = createAuthHttpHandler({
+  const router = createHttpRouter();
+  registerRoutes({
+    router,
     authService,
-    config: {
-      maxBodyBytes: 16 * 1024,
-      loginRateLimit: config.rateLimit,
-      refreshTokenCookie: config.auth.refreshToken.cookie,
-    },
+    tokenService,
+    publicIndexPath: options.publicIndexPath ?? path.join(__dirname, "..", "..", "public", "index.html"),
+    maxBodyBytes: 16 * 1024,
+    loginRateLimit: config.rateLimit,
+    refreshTokenCookie: config.auth.refreshToken.cookie,
     runtime: options.authHttpRuntime,
   });
   const httpLogger = logger.child({ transport: "http" });
   const webSocketLogger = logger.child({ transport: "websocket" });
   const httpServer = createHttpServer({
-    authHandler,
+    router,
     logger: httpLogger,
-    publicIndexPath: options.publicIndexPath ?? path.join(__dirname, "..", "..", "public", "index.html"),
   });
   const webSocketServer = createWebSocketServer({
     httpServer,

@@ -43,6 +43,7 @@ describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 �
   async function signup(userId: string, nickname: string): Promise<AuthResult> {
     const response = await fetch(`${httpBaseUrl}/signup`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, nickname, password: "test1234" }),
     });
 
@@ -53,6 +54,7 @@ describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 �
   async function login(userId: string): Promise<AuthResult> {
     const response = await fetch(`${httpBaseUrl}/login`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, password: "test1234" }),
     });
 

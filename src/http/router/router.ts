@@ -1,4 +1,5 @@
 import type { HttpContext } from '../context/httpContext'
+import { HttpError } from "../errors/httpError";
 import { composeMiddleware } from '../middleware/composeMiddleware'
 import type { Middleware, RouteHandler } from '../middleware/middleware'
 import { matchRoute } from './routeMatcher';
@@ -29,14 +30,16 @@ export function createHttpRouter(): HttpRouter {
     }
 
     async function handle(context: HttpContext): Promise<boolean> {
+        const allowedMethods = new Set<HttpMethod>();
+
         for (const route of routes) {
-            if (route.method !== context.method) {
+            const match = matchRoute(route.path, context.path);
+            if (!match.matched) {
                 continue;
             }
 
-            const match = matchRoute(route.path, context.path);
-
-            if (!match.matched) {
+            if (route.method !== context.method) {
+                allowedMethods.add(route.method);
                 continue;
             }
 
@@ -48,6 +51,17 @@ export function createHttpRouter(): HttpRouter {
             await composed(context);
             return true;
         }
+
+        if (allowedMethods.size > 0) {
+            const allow = [...allowedMethods].join(", ");
+            throw new HttpError({
+                statusCode: 405,
+                code: "METHOD_NOT_ALLOWED",
+                message: "허용되지 않은 HTTP 메서드입니다.",
+                headers: { Allow: allow },
+            });
+        }
+
         return false;
     }
     return {
