@@ -2,9 +2,15 @@ import http from "node:http";
 import path from "node:path";
 
 import { createTokenService } from "../auth/tokenService";
+import {
+  createCreateRoomUseCase,
+  type CreateRoomUseCase,
+} from "./room/createRoom";
+import type { UnitOfWork } from "./unitOfWork";
 import { attachChatRuntime, type ChatRuntime } from "../chat/chatRuntime";
 import type { AppConfig } from "../config";
 import { openDatabase, type DatabaseConnection } from "../database/database";
+import { createSqliteUnitOfWork } from "../database/sqliteUnitOfWork";
 import { createHttpServer } from "../http/createHttpServer";
 import { registerRoutes } from "../http/registerRoutes";
 import { createHttpRouter } from "../http/router/router";
@@ -12,6 +18,8 @@ import type { AuthHandlerRuntimeOptions } from "../http/handlers/authHandlers";
 import type { Logger } from "../logging/logger";
 import { createMessageRepository, type MessageRepository } from "../repositories/messageRepository";
 import { createRefreshTokenRepository, type RefreshTokenRepository } from "../repositories/refreshTokenRepository";
+import { createRoomMemberRepository, type RoomMemberRepository } from "../repositories/roomMemberRepository";
+import { createRoomRepository, type RoomRepository } from "../repositories/roomRepository";
 import { createUserRepository, type UserRepository } from "../repositories/userRepository";
 import { createAuthService, type AuthService } from "../service/authService";
 import createRoomService, { type RoomService } from "../service/roomService";
@@ -22,14 +30,20 @@ export interface ApplicationContainer {
   config: AppConfig;
   logger: Logger;
   database: Pick<DatabaseConnection, "close">;
+  unitOfWork: UnitOfWork;
   repositories: {
     userRepository: UserRepository;
     messageRepository: MessageRepository;
     refreshTokenRepository: RefreshTokenRepository;
+    roomRepository: RoomRepository;
+    roomMemberRepository: RoomMemberRepository;
   };
   services: {
     authService: AuthService;
     roomService: RoomService;
+  };
+  useCases: {
+    createRoom: CreateRoomUseCase;
   };
   servers: {
     httpServer: http.Server;
@@ -56,13 +70,29 @@ export async function createApplicationContainer(
   const userRepository = createUserRepository(database);
   const messageRepository = createMessageRepository(database);
   const refreshTokenRepository = createRefreshTokenRepository(database);
+  const roomRepository = createRoomRepository(database);
+  const roomMemberRepository = createRoomMemberRepository(database);
+  const unitOfWork = createSqliteUnitOfWork({
+    database,
+    logger: logger.child({ component: "SqliteUnitOfWork" }),
+  });
   const tokenService = createTokenService({
     accessTokenSecret: config.auth.accessToken.secret,
     accessTokenExpiresIn: config.auth.accessToken.expiresIn,
     refreshTokenSecret: config.auth.refreshToken.secret,
     refreshTokenExpiresIn: config.auth.refreshToken.expiresIn,
   });
-  const authService = createAuthService({ userRepository, refreshTokenRepository, tokenService });
+  const authService = createAuthService({
+    userRepository,
+    refreshTokenRepository,
+    tokenService,
+    unitOfWork,
+  });
+  const createRoom = createCreateRoomUseCase({
+    roomRepository,
+    roomMemberRepository,
+    unitOfWork,
+  });
   const router = createHttpRouter();
   registerRoutes({
     router,
@@ -98,8 +128,16 @@ export async function createApplicationContainer(
     config,
     logger,
     database,
-    repositories: { userRepository, messageRepository, refreshTokenRepository },
+    unitOfWork,
+    repositories: {
+      userRepository,
+      messageRepository,
+      refreshTokenRepository,
+      roomRepository,
+      roomMemberRepository,
+    },
     services: { authService, roomService },
+    useCases: { createRoom },
     servers: { httpServer, webSocketServer },
     runtimes: { chatRuntime },
   };

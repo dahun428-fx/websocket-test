@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createTokenService } from "../auth/tokenService";
+import type { UnitOfWork } from "../application/unitOfWork";
 import {
   InvalidCredentialsError,
   InvalidRefreshTokenError,
@@ -52,6 +53,12 @@ function createRefreshTokenRepository(): RefreshTokenRepository {
   };
 }
 
+function createImmediateUnitOfWork(): UnitOfWork {
+  return {
+    run: (work) => work(),
+  };
+}
+
 describe("authService", () => {
   it("returns a login result with a verifiable access token for valid credentials", async () => {
     const tokenService = createTestTokenService();
@@ -60,6 +67,7 @@ describe("authService", () => {
       userRepository,
       refreshTokenRepository: createRefreshTokenRepository(),
       tokenService,
+      unitOfWork: createImmediateUnitOfWork(),
     });
 
     const result = await authService.login({
@@ -90,6 +98,7 @@ describe("authService", () => {
       userRepository: createUserRepository(),
       refreshTokenRepository: createRefreshTokenRepository(),
       tokenService: createTestTokenService(),
+      unitOfWork: createImmediateUnitOfWork(),
       passwordService: { verifyPassword },
     });
 
@@ -106,6 +115,7 @@ describe("authService", () => {
       userRepository: createUserRepository(),
       refreshTokenRepository: createRefreshTokenRepository(),
       tokenService: createTestTokenService(),
+      unitOfWork: createImmediateUnitOfWork(),
     });
 
     await expect(authService.login({
@@ -123,6 +133,7 @@ describe("authService", () => {
       userRepository: duplicateRepository,
       refreshTokenRepository: createRefreshTokenRepository(),
       tokenService: createTestTokenService(),
+      unitOfWork: createImmediateUnitOfWork(),
     });
 
     await expect(duplicateService.signup({
@@ -145,6 +156,7 @@ describe("authService", () => {
       userRepository: createUserRepository(),
       refreshTokenRepository: createRefreshTokenRepository(),
       tokenService: createTestTokenService(),
+      unitOfWork: createImmediateUnitOfWork(),
     });
 
     await expect(authService.refresh({
@@ -160,6 +172,7 @@ describe("authService", () => {
       userRepository: createUserRepository(),
       refreshTokenRepository,
       tokenService: createTestTokenService(),
+      unitOfWork: createImmediateUnitOfWork(),
     });
     const login = await authService.login({
       userId: "user-100",
@@ -197,6 +210,7 @@ describe("authService", () => {
       userRepository: createUserRepository(),
       refreshTokenRepository,
       tokenService: createTestTokenService(),
+      unitOfWork: createImmediateUnitOfWork(),
     });
 
     const login = await authService.login({

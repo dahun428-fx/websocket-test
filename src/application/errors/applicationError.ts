@@ -3,6 +3,7 @@ export type ApplicationErrorCode =
     | "USER_ALREADY_EXISTS"
     | "INVALID_REFRESH_TOKEN"
     | "REFRESH_TOKEN_REUSED"
+    | "INVALID_ROOM_NAME"
     | "ROOM_NOT_FOUND"
     | "ROOM_ACCESS_DENIED";
 

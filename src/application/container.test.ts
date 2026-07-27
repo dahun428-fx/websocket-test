@@ -23,8 +23,12 @@ describe("Application container", () => {
     expect(container.repositories.userRepository).toBeDefined();
     expect(container.repositories.messageRepository).toBeDefined();
     expect(container.repositories.refreshTokenRepository).toBeDefined();
+    expect(container.repositories.roomRepository).toBeDefined();
+    expect(container.repositories.roomMemberRepository).toBeDefined();
+    expect(container.unitOfWork).toBeDefined();
     expect(container.services.authService).toBeDefined();
     expect(container.services.roomService).toBeDefined();
+    expect(container.useCases.createRoom).toBeDefined();
     expect(container.servers.httpServer).toBeDefined();
     expect(container.servers.webSocketServer).toBeDefined();
     expect(container.runtimes.chatRuntime).toBeDefined();

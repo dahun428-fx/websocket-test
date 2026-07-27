@@ -12,6 +12,13 @@ function getDefaultDatabasePath(): string {
 
 async function initializeSchema(database: DatabaseConnection): Promise<void> {
   await database.exec("PRAGMA foreign_keys = ON");
+  const foreignKeys = await database.get<{ foreign_keys: number }>(
+    "PRAGMA foreign_keys",
+  );
+  if (foreignKeys?.foreign_keys !== 1) {
+    throw new Error("SQLite foreign keys are disabled.");
+  }
+
   await database.exec("BEGIN IMMEDIATE");
 
   try {
@@ -21,6 +28,32 @@ async function initializeSchema(database: DatabaseConnection): Promise<void> {
         nickname TEXT NOT NULL,
         password_hash TEXT NOT NULL,
         created_at TEXT NOT NULL
+      )
+    `);
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS rooms (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (created_by)
+          REFERENCES users(id)
+          ON DELETE CASCADE
+      )
+    `);
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS room_members (
+        room_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
+        joined_at TEXT NOT NULL,
+        PRIMARY KEY (room_id, user_id),
+        FOREIGN KEY (room_id)
+          REFERENCES rooms(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (user_id)
+          REFERENCES users(id)
+          ON DELETE CASCADE
       )
     `);
     await database.exec(`

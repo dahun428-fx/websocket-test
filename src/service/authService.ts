@@ -10,6 +10,7 @@ import {
   RefreshTokenReusedError,
   UserAlreadyExistsError,
 } from "../application/errors/authErrors";
+import type { UnitOfWork } from "../application/unitOfWork";
 import { hashRefreshToken } from "../auth/refreshTokenHash";
 import {
   type CreatedRefreshToken,
@@ -70,13 +71,19 @@ export interface CreateAuthServiceOptions {
   userRepository: UserRepository;
   refreshTokenRepository: RefreshTokenRepository;
   tokenService: TokenService;
+  unitOfWork: UnitOfWork;
   passwordService?: Partial<Pick<AuthServiceDependencies, "verifyPassword" | "hashPassword">>;
 }
 
 export function createAuthService(
   options: CreateAuthServiceOptions,
 ): AuthService {
-  const { userRepository, refreshTokenRepository, tokenService } = options;
+  const {
+    userRepository,
+    refreshTokenRepository,
+    tokenService,
+    unitOfWork,
+  } = options;
   const dependencies: AuthServiceDependencies = {
     verifyPassword: defaultVerifyPassword,
     hashPassword: defaultHashPassword,
@@ -86,21 +93,22 @@ export function createAuthService(
     ...options.passwordService,
   };
 
-  async function issueTokens(user: { id: string; nickname: string }): Promise<AuthResult> {
+  function prepareTokens(user: { id: string; nickname: string }) {
     const refresh = dependencies.createRefreshToken(user.id);
-    await refreshTokenRepository.save({
-      tokenId: refresh.tokenId,
-      tokenHash: hashRefreshToken(refresh.token),
-      userId: user.id,
-      createdAt: new Date().toISOString(),
-      expiresAt: refresh.expiresAt,
-    });
-
     return {
-      accessToken: dependencies.createAccessToken(user.id, user.nickname),
-      refreshToken: refresh.token,
-      refreshTokenExpiresAt: refresh.expiresAt,
-      user: { userId: user.id, nickname: user.nickname },
+      result: {
+        accessToken: dependencies.createAccessToken(user.id, user.nickname),
+        refreshToken: refresh.token,
+        refreshTokenExpiresAt: refresh.expiresAt,
+        user: { userId: user.id, nickname: user.nickname },
+      },
+      record: {
+        tokenId: refresh.tokenId,
+        tokenHash: hashRefreshToken(refresh.token),
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+        expiresAt: refresh.expiresAt,
+      },
     };
   }
 
@@ -122,21 +130,33 @@ export function createAuthService(
       throw new InvalidCredentialsError();
     }
 
-    return issueTokens(user);
+    const prepared = prepareTokens(user);
+    await unitOfWork.run(
+      () => refreshTokenRepository.save(prepared.record),
+    );
+    return prepared.result;
   }
 
   async function signup(command: SignupCommand): Promise<AuthResult> {
     const passwordHash = await dependencies.hashPassword(command.password);
+    const createdAt = new Date().toISOString();
+    const prepared = prepareTokens({
+      id: command.userId,
+      nickname: command.nickname,
+    });
 
     try {
-      const user = await userRepository.create({
-        id: command.userId,
-        nickname: command.nickname,
-        passwordHash,
-        createdAt: new Date().toISOString(),
+      await unitOfWork.run(async () => {
+        await userRepository.create({
+          id: command.userId,
+          nickname: command.nickname,
+          passwordHash,
+          createdAt,
+        });
+        await refreshTokenRepository.save(prepared.record);
       });
 
-      return issueTokens(user);
+      return prepared.result;
     } catch (error) {
       if (error instanceof DuplicateUserIdRepositoryError) {
         throw new UserAlreadyExistsError(command.userId, { cause: error });
@@ -179,11 +199,15 @@ export function createAuthService(
       throw new InvalidRefreshTokenError();
     }
 
-    if (!await refreshTokenRepository.revoke(storedToken.tokenId)) {
-      throw new RefreshTokenReusedError(storedToken.tokenId);
-    }
+    const prepared = prepareTokens(user);
+    await unitOfWork.run(async () => {
+      if (!await refreshTokenRepository.revoke(storedToken.tokenId)) {
+        throw new RefreshTokenReusedError(storedToken.tokenId);
+      }
+      await refreshTokenRepository.save(prepared.record);
+    });
 
-    return issueTokens(user);
+    return prepared.result;
   }
 
   async function logout(command: RefreshTokenCommand): Promise<void> {
@@ -195,7 +219,9 @@ export function createAuthService(
       return;
     }
 
-    await refreshTokenRepository.revoke(payload.tokenId);
+    await unitOfWork.run(
+      () => refreshTokenRepository.revoke(payload.tokenId),
+    );
   }
 
   return { login, signup, refresh, logout };

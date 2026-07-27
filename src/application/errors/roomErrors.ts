@@ -1,8 +1,18 @@
 import { ApplicationError } from "./applicationError";
 
 export type RoomErrorCode =
+    | "INVALID_ROOM_NAME"
     | "ROOM_NOT_FOUND"
     | "ROOM_ACCESS_DENIED";
+
+export class InvalidRoomNameError extends ApplicationError {
+    constructor() {
+        super({
+            code: "INVALID_ROOM_NAME",
+            message: "채팅방 이름을 입력하세요.",
+        });
+    }
+}
 
 export class RoomNotFoundError extends ApplicationError {
     constructor(roomId: string) {
