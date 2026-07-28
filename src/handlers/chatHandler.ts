@@ -1,3 +1,5 @@
+import type { EventBus } from "../application/events/eventBus";
+import { createMessageCreatedEvent } from "../application/events/messageEvents";
 import type { MessageRepository } from "../repositories/messageRepository";
 import type { RoomService } from "../service/roomService";
 import type { SendError } from "../types/handler";
@@ -7,12 +9,19 @@ import type { ChatWebSocket } from "../types/websocket";
 export interface ChatHandlerDependencies {
   roomService: RoomService;
   messageRepository: MessageRepository;
+  eventBus?: EventBus;
   sendError: SendError;
   createTimestamp(): string;
 }
 
 export function createChatHandler(dependencies: ChatHandlerDependencies) {
-  const { roomService, messageRepository, sendError, createTimestamp } = dependencies;
+  const {
+    roomService,
+    messageRepository,
+    eventBus,
+    sendError,
+    createTimestamp,
+  } = dependencies;
 
   return async function handleChat(
     socket: ChatWebSocket,
@@ -48,6 +57,16 @@ export function createChatHandler(dependencies: ChatHandlerDependencies) {
       createdAt: createTimestamp(),
     };
     const savedMessage = await messageRepository.save(roomId, chatMessage);
+
+    if (socket.userId) {
+      await eventBus?.publish(createMessageCreatedEvent({
+        messageId: String(savedMessage.id),
+        roomId,
+        userId: socket.userId,
+        createdAt: savedMessage.createdAt,
+      }));
+    }
+
     roomService.broadcastToRoom(roomId, savedMessage);
     return true;
   };

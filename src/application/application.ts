@@ -9,7 +9,7 @@ export interface Application {
 }
 
 export function createApplication(container: ApplicationContainer): Application {
-  const { config, logger, database, servers, runtimes } = container;
+  const { config, logger, database, servers, runtimes, lifecycle } = container;
   let stopped = false;
   let stopPromise: Promise<void> | null = null;
 
@@ -47,6 +47,9 @@ export function createApplication(container: ApplicationContainer): Application 
     stopPromise = (async () => {
       const errors: unknown[] = [];
       logger.info("Application shutdown started", { reason });
+      for (const unsubscribe of lifecycle.unsubscribeEventHandlers) {
+        try { unsubscribe(); } catch (error) { errors.push(error); }
+      }
       try { await runtimes.chatRuntime.close(); } catch (error) { errors.push(error); }
       if (servers.httpServer.listening) {
         try {

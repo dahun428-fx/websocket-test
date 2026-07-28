@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { RoomMemberRepository } from "../../repositories/roomMemberRepository";
 import type { RoomRepository } from "../../repositories/roomRepository";
 import { InvalidRoomNameError } from "../errors/roomErrors";
+import type { EventBus } from "../events/eventBus";
+import { createRoomCreatedEvent } from "../events/roomEvents";
 import type { UnitOfWork } from "../unitOfWork";
 
 export interface CreateRoomCommand {
@@ -24,6 +26,7 @@ export interface CreateCreateRoomUseCaseOptions {
   roomRepository: RoomRepository;
   roomMemberRepository: RoomMemberRepository;
   unitOfWork: UnitOfWork;
+  eventBus?: EventBus;
   runtime?: {
     createId?: () => string;
     now?: () => Date;
@@ -44,7 +47,7 @@ export function createCreateRoomUseCase(
     const roomId = options.runtime?.createId?.() ?? randomUUID();
     const createdAt = (options.runtime?.now?.() ?? new Date()).toISOString();
 
-    return options.unitOfWork.run(async () => {
+    const result = await options.unitOfWork.run(async () => {
       await options.roomRepository.create({
         id: roomId,
         name,
@@ -59,6 +62,15 @@ export function createCreateRoomUseCase(
       });
       return { roomId, name, createdAt };
     });
+
+    await options.eventBus?.publish(createRoomCreatedEvent({
+      roomId,
+      ownerId: command.userId,
+      name,
+      createdAt,
+    }));
+
+    return result;
   }
 
   return { execute };

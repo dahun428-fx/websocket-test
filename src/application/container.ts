@@ -2,6 +2,9 @@ import http from "node:http";
 import path from "node:path";
 
 import { createTokenService } from "../auth/tokenService";
+import type { EventBus } from "./events/eventBus";
+import { createInMemoryEventBus } from "./events/inMemoryEventBus";
+import { registerEventHandlers } from "./events/registerEventHandlers";
 import {
   createCreateRoomUseCase,
   type CreateRoomUseCase,
@@ -31,6 +34,7 @@ export interface ApplicationContainer {
   logger: Logger;
   database: Pick<DatabaseConnection, "close">;
   unitOfWork: UnitOfWork;
+  eventBus: EventBus;
   repositories: {
     userRepository: UserRepository;
     messageRepository: MessageRepository;
@@ -51,6 +55,9 @@ export interface ApplicationContainer {
   };
   runtimes: {
     chatRuntime: ChatRuntime;
+  };
+  lifecycle: {
+    unsubscribeEventHandlers: Array<() => void>;
   };
 }
 
@@ -76,6 +83,9 @@ export async function createApplicationContainer(
     database,
     logger: logger.child({ component: "SqliteUnitOfWork" }),
   });
+  const eventBus = createInMemoryEventBus({
+    logger: logger.child({ component: "InMemoryEventBus" }),
+  });
   const tokenService = createTokenService({
     accessTokenSecret: config.auth.accessToken.secret,
     accessTokenExpiresIn: config.auth.accessToken.expiresIn,
@@ -87,11 +97,17 @@ export async function createApplicationContainer(
     refreshTokenRepository,
     tokenService,
     unitOfWork,
+    eventBus,
   });
   const createRoom = createCreateRoomUseCase({
     roomRepository,
     roomMemberRepository,
     unitOfWork,
+    eventBus,
+  });
+  const unsubscribeEventHandlers = registerEventHandlers({
+    eventBus,
+    logger: logger.child({ component: "DomainEventHandler" }),
   });
   const router = createHttpRouter();
   registerRoutes({
@@ -117,6 +133,7 @@ export async function createApplicationContainer(
   const roomService = createRoomService({ webSocketServer });
   const chatRuntime = attachChatRuntime(webSocketServer, {
     messageRepository,
+    eventBus,
     heartbeatIntervalMs: config.heartbeat.interval_ms,
     verifyAccessToken: tokenService.verifyAccessToken,
     heartbeatDebug: config.heartbeat.debug,
@@ -129,6 +146,7 @@ export async function createApplicationContainer(
     logger,
     database,
     unitOfWork,
+    eventBus,
     repositories: {
       userRepository,
       messageRepository,
@@ -140,5 +158,6 @@ export async function createApplicationContainer(
     useCases: { createRoom },
     servers: { httpServer, webSocketServer },
     runtimes: { chatRuntime },
+    lifecycle: { unsubscribeEventHandlers },
   };
 }

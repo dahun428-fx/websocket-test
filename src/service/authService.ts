@@ -10,6 +10,8 @@ import {
   RefreshTokenReusedError,
   UserAlreadyExistsError,
 } from "../application/errors/authErrors";
+import type { EventBus } from "../application/events/eventBus";
+import { createUserCreatedEvent } from "../application/events/userEvents";
 import type { UnitOfWork } from "../application/unitOfWork";
 import { hashRefreshToken } from "../auth/refreshTokenHash";
 import {
@@ -72,6 +74,7 @@ export interface CreateAuthServiceOptions {
   refreshTokenRepository: RefreshTokenRepository;
   tokenService: TokenService;
   unitOfWork: UnitOfWork;
+  eventBus?: EventBus;
   passwordService?: Partial<Pick<AuthServiceDependencies, "verifyPassword" | "hashPassword">>;
 }
 
@@ -155,14 +158,21 @@ export function createAuthService(
         });
         await refreshTokenRepository.save(prepared.record);
       });
-
-      return prepared.result;
     } catch (error) {
       if (error instanceof DuplicateUserIdRepositoryError) {
         throw new UserAlreadyExistsError(command.userId, { cause: error });
       }
       throw error;
     }
+
+    await options.eventBus?.publish(createUserCreatedEvent({
+      userId: command.userId,
+      loginId: command.userId,
+      nickname: command.nickname,
+      createdAt,
+    }));
+
+    return prepared.result;
   }
 
   async function refresh(command: RefreshTokenCommand): Promise<AuthResult> {

@@ -1,7 +1,5 @@
-import { DomainEvent } from "./domainEvent";
+import type { DomainEvent } from "./domainEvent";
 
-export interface EventHandler<TEvent extends DomainEvent = DomainEvent> {
-    handle(
-        event: TEvent
-    ): Promise<void>
-}
+export type DomainEventHandler<TEvent extends DomainEvent = DomainEvent> = (
+  event: TEvent,
+) => Promise<void>;

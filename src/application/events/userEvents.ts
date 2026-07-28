@@ -1,17 +1,15 @@
 import { createDomainEvent } from "./createDomainEvent";
-import { DomainEvent } from "./domainEvent";
+import type { DomainEvent } from "./domainEvent";
 
 export interface UserCreatedPayload {
-    userId: string;
-    loginId: string;
-    nickname: string;
-    createdAt: string;
+  userId: string;
+  loginId: string;
+  nickname: string;
+  createdAt: string;
 }
 
-export type UserCreatedEvent = DomainEvent<"UserCreated", UserCreatedPayload>
+export type UserCreatedEvent = DomainEvent<"UserCreated", UserCreatedPayload>;
 
 export function createUserCreatedEvent(payload: UserCreatedPayload): UserCreatedEvent {
-    return createDomainEvent(
-        "UserCreated", payload
-    )
+  return createDomainEvent("UserCreated", payload);
 }
