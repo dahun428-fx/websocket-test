@@ -4,6 +4,7 @@ import {
     InvalidCredentialsError,
     InvalidRefreshTokenError,
 } from "../../application/errors/authErrors";
+import type { CreateUserUseCase } from "../../application/user/createUser";
 import type { AuthService } from "../../service/authService";
 import type { HttpContext } from "../context/httpContext";
 import { createAuthHandlers } from "./authHandlers";
@@ -35,15 +36,25 @@ function createContext(body: unknown, cookie?: string) {
 function createAuthService(): AuthService {
     return {
         login: vi.fn(),
-        signup: vi.fn(),
         refresh: vi.fn(),
         logout: vi.fn(),
     };
 }
 
-function createHandlers(authService: AuthService, maxAttempts = 5) {
+function createUserUseCase(): CreateUserUseCase {
+    return {
+        execute: vi.fn(),
+    };
+}
+
+function createHandlers(
+    authService: AuthService,
+    maxAttempts = 5,
+    userUseCase = createUserUseCase(),
+) {
     return createAuthHandlers({
         authService,
+        createUserUseCase: userUseCase,
         loginRateLimit: { maxAttempts, windowMs: 60_000 },
         refreshTokenCookie: {
             name: "refresh_token",
@@ -55,6 +66,34 @@ function createHandlers(authService: AuthService, maxAttempts = 5) {
 }
 
 describe("auth route handlers", () => {
+    it("delegates signup to CreateUserUseCase", async () => {
+        const authService = createAuthService();
+        const userUseCase = createUserUseCase();
+        vi.mocked(userUseCase.execute).mockResolvedValue({
+            accessToken: "access-token",
+            refreshToken: "refresh-token",
+            refreshTokenExpiresAt: "2026-01-02T00:00:00.000Z",
+            user: { userId: "user-100", nickname: "neo" },
+        });
+        const { context } = createContext({
+            userId: "user-100",
+            nickname: "neo",
+            password: "never-log-this",
+        });
+
+        await createHandlers(authService, 5, userUseCase).signup(context);
+
+        expect(userUseCase.execute).toHaveBeenCalledWith({
+            userId: "user-100",
+            nickname: "neo",
+            password: "never-log-this",
+        });
+        expect(context.json).toHaveBeenCalledWith(201, {
+            accessToken: "access-token",
+            user: { userId: "user-100", nickname: "neo" },
+        });
+    });
+
     it("returns tokens safely without logging the password", async () => {
         const authService = createAuthService();
         vi.mocked(authService.login).mockResolvedValue({

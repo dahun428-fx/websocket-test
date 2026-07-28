@@ -6,13 +6,9 @@ import {
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReusedError,
-  UserAlreadyExistsError,
 } from "../application/errors/authErrors";
 import type { RefreshTokenRepository } from "../repositories/refreshTokenRepository";
-import {
-  DuplicateUserIdRepositoryError,
-  type UserRepository,
-} from "../repositories/userRepository";
+import type { UserRepository } from "../repositories/userRepository";
 import { createAuthService } from "./authService";
 
 const TEST_PASSWORD_HASH =
@@ -122,33 +118,6 @@ describe("authService", () => {
       userId: "user-100",
       password: "wrong-password",
     })).rejects.toBeInstanceOf(InvalidCredentialsError);
-  });
-
-  it("maps duplicate repository errors and preserves unexpected failures", async () => {
-    const duplicateRepository = createUserRepository();
-    vi.mocked(duplicateRepository.create).mockRejectedValue(
-      new DuplicateUserIdRepositoryError("user-100"),
-    );
-    const duplicateService = createAuthService({
-      userRepository: duplicateRepository,
-      refreshTokenRepository: createRefreshTokenRepository(),
-      tokenService: createTestTokenService(),
-      unitOfWork: createImmediateUnitOfWork(),
-    });
-
-    await expect(duplicateService.signup({
-      userId: "user-100",
-      nickname: "neo",
-      password: "test1234",
-    })).rejects.toBeInstanceOf(UserAlreadyExistsError);
-
-    const databaseError = new Error("database unavailable");
-    vi.mocked(duplicateRepository.create).mockRejectedValue(databaseError);
-    await expect(duplicateService.signup({
-      userId: "user-200",
-      nickname: "trinity",
-      password: "test1234",
-    })).rejects.toBe(databaseError);
   });
 
   it("throws InvalidRefreshTokenError for malformed tokens", async () => {

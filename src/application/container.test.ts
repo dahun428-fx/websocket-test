@@ -29,6 +29,7 @@ describe("Application container", () => {
     expect(container.services.authService).toBeDefined();
     expect(container.services.roomService).toBeDefined();
     expect(container.useCases.createRoom).toBeDefined();
+    expect(container.useCases.createUser).toBeDefined();
     expect(container.servers.httpServer).toBeDefined();
     expect(container.servers.webSocketServer).toBeDefined();
     expect(container.runtimes.chatRuntime).toBeDefined();

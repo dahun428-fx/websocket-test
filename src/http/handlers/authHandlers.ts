@@ -1,6 +1,10 @@
 import type { LoginInput } from "../../schemas/loginSchema";
 import type { SignupRequest } from "../../schemas/signupSchema";
 import type { AuthResult, AuthService } from "../../service/authService";
+import type {
+    CreateUserResult,
+    CreateUserUseCase,
+} from "../../application/user/createUser";
 import {
     InvalidCredentialsError,
     InvalidRefreshTokenError,
@@ -27,6 +31,7 @@ export interface AuthHandlerRuntimeOptions {
 
 export interface CreateAuthHandlersOptions {
     authService: AuthService;
+    createUserUseCase: CreateUserUseCase;
     loginRateLimit: LoginRateLimitOptions;
     refreshTokenCookie: RefreshTokenCookieOptions;
     runtime?: AuthHandlerRuntimeOptions;
@@ -72,7 +77,7 @@ function createLoginLimiter(options: LoginRateLimitOptions, now: () => number) {
 function sendAuthResult(
     context: HttpContext,
     statusCode: number,
-    result: AuthResult,
+    result: AuthResult | CreateUserResult,
     cookieOptions: RefreshTokenCookieOptions,
     now: () => number,
 ): void {
@@ -86,7 +91,13 @@ function sendAuthResult(
 }
 
 export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHandlers {
-    const { authService, loginRateLimit, refreshTokenCookie, runtime = {} } = options;
+    const {
+        authService,
+        createUserUseCase,
+        loginRateLimit,
+        refreshTokenCookie,
+        runtime = {},
+    } = options;
     const now = runtime.now ?? Date.now;
     const limiter = createLoginLimiter(loginRateLimit, now);
 
@@ -134,7 +145,7 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
 
     const signup: RouteHandler = async (context) => {
         const body = context.body as SignupRequest;
-        const result = await authService.signup({
+        const result = await createUserUseCase.execute({
             userId: body.userId,
             nickname: body.nickname,
             password: body.password,

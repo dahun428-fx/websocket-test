@@ -1,4 +1,5 @@
 import type { TokenService } from "../auth/tokenService";
+import type { CreateUserUseCase } from "../application/user/createUser";
 import { loginSchema } from "../schemas/loginSchema";
 import { signupRequestSchema } from "../schemas/signupSchema";
 import type { AuthService } from "../service/authService";
@@ -17,6 +18,7 @@ import type { RefreshTokenCookieOptions } from "./cookieUtils";
 export interface RegisterRoutesOptions {
     router: HttpRouter;
     authService: AuthService;
+    createUserUseCase: CreateUserUseCase;
     tokenService: TokenService;
     publicIndexPath: string;
     maxBodyBytes: number;
@@ -28,6 +30,7 @@ export interface RegisterRoutesOptions {
 export function registerRoutes(options: RegisterRoutesOptions): void {
     const handlers = createAuthHandlers({
         authService: options.authService,
+        createUserUseCase: options.createUserUseCase,
         loginRateLimit: options.loginRateLimit,
         refreshTokenCookie: options.refreshTokenCookie,
         runtime: options.runtime,

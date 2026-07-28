@@ -74,7 +74,6 @@ describe("authService transactions", () => {
       unitOfWork,
       passwordService: {
         verifyPassword: vi.fn(async () => true),
-        hashPassword: vi.fn(async () => "hash"),
       },
     });
     const authService = createService(refreshTokenRepository);
@@ -100,39 +99,4 @@ describe("authService transactions", () => {
     expect(recovered.refreshToken).not.toBe(login.refreshToken);
   });
 
-  it("rolls back user creation when initial token persistence fails", async () => {
-    const userRepository = createUserRepository(database);
-    const actualTokens = createRefreshTokenRepository(database);
-    const failingTokens: RefreshTokenRepository = {
-      ...actualTokens,
-      save: async () => {
-        throw new Error("forced initial-token save failure");
-      },
-    };
-    const authService = createAuthService({
-      userRepository,
-      refreshTokenRepository: failingTokens,
-      tokenService: createTokenService({
-        accessTokenSecret: "access-signup-secret",
-        accessTokenExpiresIn: "15m",
-        refreshTokenSecret: "refresh-signup-secret",
-        refreshTokenExpiresIn: "7d",
-      }),
-      unitOfWork: createSqliteUnitOfWork({
-        database,
-        logger: createLogger(),
-      }),
-      passwordService: {
-        verifyPassword: vi.fn(async () => true),
-        hashPassword: vi.fn(async () => "hash"),
-      },
-    });
-
-    await expect(authService.signup({
-      userId: "user-rollback",
-      nickname: "rollback",
-      password: "test1234",
-    })).rejects.toThrow("forced initial-token save failure");
-    await expect(userRepository.findById("user-rollback")).resolves.toBeNull();
-  });
 });

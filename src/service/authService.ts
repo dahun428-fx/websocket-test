@@ -1,5 +1,4 @@
 import {
-  hashPassword as defaultHashPassword,
   verifyPassword as defaultVerifyPassword,
 } from "../auth/passwordService";
 import crypto from "node:crypto";
@@ -8,10 +7,7 @@ import {
   InvalidCredentialsError,
   InvalidRefreshTokenError,
   RefreshTokenReusedError,
-  UserAlreadyExistsError,
 } from "../application/errors/authErrors";
-import type { EventBus } from "../application/events/eventBus";
-import { createUserCreatedEvent } from "../application/events/userEvents";
 import type { UnitOfWork } from "../application/unitOfWork";
 import { hashRefreshToken } from "../auth/refreshTokenHash";
 import {
@@ -19,10 +15,7 @@ import {
   type TokenService,
 } from "../auth/tokenService";
 import type { RefreshTokenRepository } from "../repositories/refreshTokenRepository";
-import {
-  DuplicateUserIdRepositoryError,
-  type UserRepository,
-} from "../repositories/userRepository";
+import type { UserRepository } from "../repositories/userRepository";
 
 const DUMMY_PASSWORD_HASH =
   "$2b$12$nqdy15ta1ILfCfH7nih9Tu5Vk3VVr/Mdp4Gu2ucu48iLUHvEouLu6";
@@ -44,26 +37,18 @@ export interface LoginCommand {
   password: string;
 }
 
-export interface SignupCommand {
-  userId: string;
-  nickname: string;
-  password: string;
-}
-
 export interface RefreshTokenCommand {
   refreshToken: string;
 }
 
 export interface AuthService {
   login(command: LoginCommand): Promise<AuthResult>;
-  signup(command: SignupCommand): Promise<AuthResult>;
   refresh(command: RefreshTokenCommand): Promise<AuthResult>;
   logout(command: RefreshTokenCommand): Promise<void>;
 }
 
 export interface AuthServiceDependencies {
   verifyPassword(password: string, hash: string): Promise<boolean>;
-  hashPassword(password: string): Promise<string>;
   createAccessToken(userId: string, nickname: string): string;
   createRefreshToken(userId: string): CreatedRefreshToken;
   verifyRefreshToken: TokenService["verifyRefreshToken"];
@@ -74,8 +59,7 @@ export interface CreateAuthServiceOptions {
   refreshTokenRepository: RefreshTokenRepository;
   tokenService: TokenService;
   unitOfWork: UnitOfWork;
-  eventBus?: EventBus;
-  passwordService?: Partial<Pick<AuthServiceDependencies, "verifyPassword" | "hashPassword">>;
+  passwordService?: Pick<AuthServiceDependencies, "verifyPassword">;
 }
 
 export function createAuthService(
@@ -89,7 +73,6 @@ export function createAuthService(
   } = options;
   const dependencies: AuthServiceDependencies = {
     verifyPassword: defaultVerifyPassword,
-    hashPassword: defaultHashPassword,
     createAccessToken: tokenService.createAccessToken,
     createRefreshToken: tokenService.createRefreshToken,
     verifyRefreshToken: tokenService.verifyRefreshToken,
@@ -137,41 +120,6 @@ export function createAuthService(
     await unitOfWork.run(
       () => refreshTokenRepository.save(prepared.record),
     );
-    return prepared.result;
-  }
-
-  async function signup(command: SignupCommand): Promise<AuthResult> {
-    const passwordHash = await dependencies.hashPassword(command.password);
-    const createdAt = new Date().toISOString();
-    const prepared = prepareTokens({
-      id: command.userId,
-      nickname: command.nickname,
-    });
-
-    try {
-      await unitOfWork.run(async () => {
-        await userRepository.create({
-          id: command.userId,
-          nickname: command.nickname,
-          passwordHash,
-          createdAt,
-        });
-        await refreshTokenRepository.save(prepared.record);
-      });
-    } catch (error) {
-      if (error instanceof DuplicateUserIdRepositoryError) {
-        throw new UserAlreadyExistsError(command.userId, { cause: error });
-      }
-      throw error;
-    }
-
-    await options.eventBus?.publish(createUserCreatedEvent({
-      userId: command.userId,
-      loginId: command.userId,
-      nickname: command.nickname,
-      createdAt,
-    }));
-
     return prepared.result;
   }
 
@@ -234,5 +182,5 @@ export function createAuthService(
     );
   }
 
-  return { login, signup, refresh, logout };
+  return { login, refresh, logout };
 }

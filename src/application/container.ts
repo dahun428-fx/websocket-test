@@ -6,6 +6,10 @@ import type { EventBus } from "./events/eventBus";
 import { createInMemoryEventBus } from "./events/inMemoryEventBus";
 import { registerEventHandlers } from "./events/registerEventHandlers";
 import {
+  createUserUseCase,
+  type CreateUserUseCase,
+} from "./user/createUser";
+import {
   createCreateRoomUseCase,
   type CreateRoomUseCase,
 } from "./room/createRoom";
@@ -48,6 +52,7 @@ export interface ApplicationContainer {
   };
   useCases: {
     createRoom: CreateRoomUseCase;
+    createUser: CreateUserUseCase;
   };
   servers: {
     httpServer: http.Server;
@@ -92,12 +97,18 @@ export async function createApplicationContainer(
     refreshTokenSecret: config.auth.refreshToken.secret,
     refreshTokenExpiresIn: config.auth.refreshToken.expiresIn,
   });
-  const authService = createAuthService({
+  const createUser = createUserUseCase({
     userRepository,
     refreshTokenRepository,
     tokenService,
     unitOfWork,
     eventBus,
+  });
+  const authService = createAuthService({
+    userRepository,
+    refreshTokenRepository,
+    tokenService,
+    unitOfWork,
   });
   const createRoom = createCreateRoomUseCase({
     roomRepository,
@@ -113,6 +124,7 @@ export async function createApplicationContainer(
   registerRoutes({
     router,
     authService,
+    createUserUseCase: createUser,
     tokenService,
     publicIndexPath: options.publicIndexPath ?? path.join(__dirname, "..", "..", "public", "index.html"),
     maxBodyBytes: 16 * 1024,
@@ -155,7 +167,7 @@ export async function createApplicationContainer(
       roomMemberRepository,
     },
     services: { authService, roomService },
-    useCases: { createRoom },
+    useCases: { createRoom, createUser },
     servers: { httpServer, webSocketServer },
     runtimes: { chatRuntime },
     lifecycle: { unsubscribeEventHandlers },
