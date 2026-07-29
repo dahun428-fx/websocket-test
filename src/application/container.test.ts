@@ -26,6 +26,9 @@ describe("Application container", () => {
     expect(container.repositories.roomRepository).toBeDefined();
     expect(container.repositories.roomMemberRepository).toBeDefined();
     expect(container.unitOfWork).toBeDefined();
+    expect(container.outbox.repository).toBeDefined();
+    expect(container.outbox.publisher).toBeDefined();
+    expect(container.outbox.worker).toBeDefined();
     expect(container.services.authService).toBeDefined();
     expect(container.services.roomService).toBeDefined();
     expect(container.useCases.createRoom).toBeDefined();

@@ -137,6 +137,8 @@ describe("message handlers", () => {
     const handler = createChatHandler({
       roomService,
       messageRepository,
+      unitOfWork: { run: async (work) => work() },
+      outboxEventPublisher: { enqueue: vi.fn() },
       sendError: vi.fn(async () => undefined),
       createTimestamp: () => "timestamp",
     });
@@ -159,6 +161,8 @@ describe("message handlers", () => {
     const handler = createChatHandler({
       roomService,
       messageRepository,
+      unitOfWork: { run: async (work) => work() },
+      outboxEventPublisher: { enqueue: vi.fn() },
       sendError: vi.fn(async () => undefined),
       createTimestamp: () => "timestamp",
     });

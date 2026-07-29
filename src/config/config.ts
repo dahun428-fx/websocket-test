@@ -35,6 +35,15 @@ export interface AppConfig {
         interval_ms: number;
         debug: boolean;
     }
+    outbox: {
+        enabled: boolean;
+        pollingIntervalMs: number;
+        batchSize: number;
+        maximumAttempts: number;
+        staleProcessingMs: number;
+        retryBaseDelayMs: number;
+        retryMaximumDelayMs: number;
+    }
     seed: {
         userPassword?: string;
     }
@@ -95,6 +104,15 @@ function mapEnvironmentToConfig(env: EnvironmentVariables): AppConfig {
         heartbeat: {
             interval_ms: env.HEARTBEAT_INTERVAL_MS,
             debug: env.HEARTBEAT_DEBUG,
+        },
+        outbox: {
+            enabled: env.OUTBOX_WORKER_ENABLED,
+            pollingIntervalMs: env.OUTBOX_POLLING_INTERVAL_MS,
+            batchSize: env.OUTBOX_BATCH_SIZE,
+            maximumAttempts: env.OUTBOX_MAXIMUM_ATTEMPTS,
+            staleProcessingMs: env.OUTBOX_STALE_PROCESSING_MS,
+            retryBaseDelayMs: env.OUTBOX_RETRY_BASE_DELAY_MS,
+            retryMaximumDelayMs: env.OUTBOX_RETRY_MAXIMUM_DELAY_MS,
         },
         seed: {
             userPassword: env.SEED_USER_PASSWORD,

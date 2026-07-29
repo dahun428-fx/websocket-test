@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { EventBus } from "../application/events/eventBus";
+import type { OutboxEventPublisher } from "../outbox/outboxEventPublisher";
 import { createChatHandler } from "./chatHandler";
 import type { MessageRepository } from "../repositories/messageRepository";
 import type { RoomService } from "../service/roomService";
 import type { ChatWebSocket } from "../types/websocket";
 
 describe("createChatHandler domain events", () => {
-  it("publishes MessageCreated after persistence without message content", async () => {
+  it("enqueues MessageCreated with persistence without message content", async () => {
     const calls: string[] = [];
-    const publish = vi.fn<EventBus["publish"]>(async (event) => {
-      calls.push("publish");
+    const enqueue = vi.fn<OutboxEventPublisher["enqueue"]>(async (event) => {
+      calls.push("enqueue");
       expect(event).toEqual(expect.objectContaining({
         name: "MessageCreated",
         payload: {
@@ -40,10 +40,10 @@ describe("createChatHandler domain events", () => {
     const handler = createChatHandler({
       roomService,
       messageRepository,
-      eventBus: {
-        publish,
-        subscribe: vi.fn(),
+      unitOfWork: {
+        run: async (work) => work(),
       },
+      outboxEventPublisher: { enqueue },
       sendError: vi.fn(),
       createTimestamp: () => "2026-07-27T00:00:00.000Z",
     });
@@ -58,6 +58,6 @@ describe("createChatHandler domain events", () => {
     });
 
     expect(handled).toBe(true);
-    expect(calls).toEqual(["save", "publish", "broadcast"]);
+    expect(calls).toEqual(["save", "enqueue", "broadcast"]);
   });
 });

@@ -1,5 +1,6 @@
-import type { EventBus } from "../application/events/eventBus";
 import { createMessageCreatedEvent } from "../application/events/messageEvents";
+import type { UnitOfWork } from "../application/unitOfWork";
+import type { OutboxEventPublisher } from "../outbox/outboxEventPublisher";
 import type { MessageRepository } from "../repositories/messageRepository";
 import type { RoomService } from "../service/roomService";
 import type { SendError } from "../types/handler";
@@ -9,7 +10,8 @@ import type { ChatWebSocket } from "../types/websocket";
 export interface ChatHandlerDependencies {
   roomService: RoomService;
   messageRepository: MessageRepository;
-  eventBus?: EventBus;
+  unitOfWork: UnitOfWork;
+  outboxEventPublisher: OutboxEventPublisher;
   sendError: SendError;
   createTimestamp(): string;
 }
@@ -18,7 +20,8 @@ export function createChatHandler(dependencies: ChatHandlerDependencies) {
   const {
     roomService,
     messageRepository,
-    eventBus,
+    unitOfWork,
+    outboxEventPublisher,
     sendError,
     createTimestamp,
   } = dependencies;
@@ -56,16 +59,20 @@ export function createChatHandler(dependencies: ChatHandlerDependencies) {
       message,
       createdAt: createTimestamp(),
     };
-    const savedMessage = await messageRepository.save(roomId, chatMessage);
+    const savedMessage = await unitOfWork.run(async () => {
+      const saved = await messageRepository.save(roomId, chatMessage);
 
-    if (socket.userId) {
-      await eventBus?.publish(createMessageCreatedEvent({
-        messageId: String(savedMessage.id),
-        roomId,
-        userId: socket.userId,
-        createdAt: savedMessage.createdAt,
-      }));
-    }
+      if (socket.userId) {
+        await outboxEventPublisher.enqueue(createMessageCreatedEvent({
+          messageId: String(saved.id),
+          roomId,
+          userId: socket.userId,
+          createdAt: saved.createdAt,
+        }));
+      }
+
+      return saved;
+    });
 
     roomService.broadcastToRoom(roomId, savedMessage);
     return true;

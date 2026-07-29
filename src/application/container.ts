@@ -23,6 +23,14 @@ import { registerRoutes } from "../http/registerRoutes";
 import { createHttpRouter } from "../http/router/router";
 import type { AuthHandlerRuntimeOptions } from "../http/handlers/authHandlers";
 import type { Logger } from "../logging/logger";
+import type { BackgroundWorker } from "../outbox/backgroundWorker";
+import { createSqliteOutboxRepository } from "../outbox/createSqliteOutboxRepository";
+import {
+  createOutboxEventPublisher,
+  type OutboxEventPublisher,
+} from "../outbox/outboxEventPublisher";
+import type { OutboxRepository } from "../outbox/outboxRepository";
+import { createOutboxWorker } from "../outbox/outboxWorker";
 import { createMessageRepository, type MessageRepository } from "../repositories/messageRepository";
 import { createRefreshTokenRepository, type RefreshTokenRepository } from "../repositories/refreshTokenRepository";
 import { createRoomMemberRepository, type RoomMemberRepository } from "../repositories/roomMemberRepository";
@@ -39,6 +47,11 @@ export interface ApplicationContainer {
   database: Pick<DatabaseConnection, "close">;
   unitOfWork: UnitOfWork;
   eventBus: EventBus;
+  outbox: {
+    repository: OutboxRepository;
+    publisher: OutboxEventPublisher;
+    worker: BackgroundWorker;
+  };
   repositories: {
     userRepository: UserRepository;
     messageRepository: MessageRepository;
@@ -91,6 +104,10 @@ export async function createApplicationContainer(
   const eventBus = createInMemoryEventBus({
     logger: logger.child({ component: "InMemoryEventBus" }),
   });
+  const outboxRepository = createSqliteOutboxRepository({ database });
+  const outboxEventPublisher = createOutboxEventPublisher({
+    outboxRepository,
+  });
   const tokenService = createTokenService({
     accessTokenSecret: config.auth.accessToken.secret,
     accessTokenExpiresIn: config.auth.accessToken.expiresIn,
@@ -102,7 +119,7 @@ export async function createApplicationContainer(
     refreshTokenRepository,
     tokenService,
     unitOfWork,
-    eventBus,
+    outboxEventPublisher,
   });
   const authService = createAuthService({
     userRepository,
@@ -114,11 +131,18 @@ export async function createApplicationContainer(
     roomRepository,
     roomMemberRepository,
     unitOfWork,
-    eventBus,
+    outboxEventPublisher,
   });
   const unsubscribeEventHandlers = registerEventHandlers({
     eventBus,
     logger: logger.child({ component: "DomainEventHandler" }),
+  });
+  const outboxWorker = createOutboxWorker({
+    outboxRepository,
+    unitOfWork,
+    eventBus,
+    logger: logger.child({ component: "OutboxWorker" }),
+    config: config.outbox,
   });
   const router = createHttpRouter();
   registerRoutes({
@@ -145,7 +169,8 @@ export async function createApplicationContainer(
   const roomService = createRoomService({ webSocketServer });
   const chatRuntime = attachChatRuntime(webSocketServer, {
     messageRepository,
-    eventBus,
+    unitOfWork,
+    outboxEventPublisher,
     heartbeatIntervalMs: config.heartbeat.interval_ms,
     verifyAccessToken: tokenService.verifyAccessToken,
     heartbeatDebug: config.heartbeat.debug,
@@ -159,6 +184,11 @@ export async function createApplicationContainer(
     database,
     unitOfWork,
     eventBus,
+    outbox: {
+      repository: outboxRepository,
+      publisher: outboxEventPublisher,
+      worker: outboxWorker,
+    },
     repositories: {
       userRepository,
       messageRepository,

@@ -9,7 +9,15 @@ export interface Application {
 }
 
 export function createApplication(container: ApplicationContainer): Application {
-  const { config, logger, database, servers, runtimes, lifecycle } = container;
+  const {
+    config,
+    logger,
+    database,
+    servers,
+    runtimes,
+    lifecycle,
+    outbox,
+  } = container;
   let stopped = false;
   let stopPromise: Promise<void> | null = null;
 
@@ -18,6 +26,7 @@ export function createApplication(container: ApplicationContainer): Application 
     if (servers.httpServer.listening) return (servers.httpServer.address() as AddressInfo).port;
 
     try {
+      await outbox.worker.start();
       await new Promise<void>((resolve, reject) => {
         const onError = (error: Error) => {
           servers.httpServer.off("listening", onListening);
@@ -47,16 +56,17 @@ export function createApplication(container: ApplicationContainer): Application 
     stopPromise = (async () => {
       const errors: unknown[] = [];
       logger.info("Application shutdown started", { reason });
-      for (const unsubscribe of lifecycle.unsubscribeEventHandlers) {
-        try { unsubscribe(); } catch (error) { errors.push(error); }
-      }
-      try { await runtimes.chatRuntime.close(); } catch (error) { errors.push(error); }
       if (servers.httpServer.listening) {
         try {
           await new Promise<void>((resolve, reject) => {
             servers.httpServer.close((error) => error ? reject(error) : resolve());
           });
         } catch (error) { errors.push(error); }
+      }
+      try { await runtimes.chatRuntime.close(); } catch (error) { errors.push(error); }
+      try { await outbox.worker.stop(); } catch (error) { errors.push(error); }
+      for (const unsubscribe of lifecycle.unsubscribeEventHandlers) {
+        try { unsubscribe(); } catch (error) { errors.push(error); }
       }
       try { await database.close(); } catch (error) { errors.push(error); }
       stopped = true;

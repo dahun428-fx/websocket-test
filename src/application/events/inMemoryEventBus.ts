@@ -60,16 +60,12 @@ export function createInMemoryEventBus(options: CreateInMemoryEventBusOptions): 
     });
 
     for (const subscription of [...eventHandlers]) {
-      try {
-        await subscription.handler(event);
-      } catch (error) {
-        logger.error("Domain event handler failed", {
-          eventId: event.eventId,
-          eventName: event.name,
-          handlerName: subscription.handlerName,
-          error,
-        });
-      }
+      logger.debug("Dispatching domain event", {
+        eventId: event.eventId,
+        eventName: event.name,
+        handlerName: subscription.handlerName,
+      });
+      await subscription.handler(event);
     }
   }
 

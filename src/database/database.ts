@@ -79,10 +79,30 @@ async function initializeSchema(database: DatabaseConnection): Promise<void> {
           ON DELETE CASCADE
       )
     `);
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS outbox_events (
+        id TEXT PRIMARY KEY,
+        event_name TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'processing', 'processed', 'failed')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        processing_started_at TEXT,
+        processed_at TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
 
     await database.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_room_id
       ON messages (room_id, id)
+    `);
+    await database.exec(`
+      CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
+      ON outbox_events (status, available_at, occurred_at)
     `);
     await database.exec("COMMIT");
   } catch (error) {

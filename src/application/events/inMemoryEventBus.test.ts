@@ -56,7 +56,7 @@ describe("InMemoryEventBus", () => {
     expect(calls).toEqual(["first", "second"]);
   });
 
-  it("isolates a handler failure and logs its identity", async () => {
+  it("propagates a handler failure so the outbox worker can retry", async () => {
     const logger = createLogger();
     const secondHandler = vi.fn(async () => undefined);
     const eventBus = createInMemoryEventBus({ logger });
@@ -75,17 +75,10 @@ describe("InMemoryEventBus", () => {
       handler: secondHandler,
     });
 
-    await expect(eventBus.publish(event)).resolves.toBeUndefined();
+    await expect(eventBus.publish(event)).rejects.toThrow("handler failed");
 
-    expect(secondHandler).toHaveBeenCalledOnce();
-    expect(logger.error).toHaveBeenCalledWith(
-      "Domain event handler failed",
-      expect.objectContaining({
-        eventId: event.eventId,
-        eventName: "UserCreated",
-        handlerName: "FailingHandler",
-      }),
-    );
+    expect(secondHandler).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it("does not run an unsubscribed handler", async () => {

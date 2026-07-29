@@ -12,12 +12,12 @@ import {
 } from "vitest";
 
 import { UserAlreadyExistsError } from "../errors/authErrors";
-import type { EventBus } from "../events/eventBus";
 import type { UnitOfWork } from "../unitOfWork";
 import { createTokenService } from "../../auth/tokenService";
 import { openDatabase, type DatabaseConnection } from "../../database/database";
 import { createSqliteUnitOfWork } from "../../database/sqliteUnitOfWork";
 import type { Logger } from "../../logging/logger";
+import type { OutboxEventPublisher } from "../../outbox/outboxEventPublisher";
 import {
   createRefreshTokenRepository,
   type RefreshTokenRepository,
@@ -39,13 +39,10 @@ function createLogger(): Logger {
   };
 }
 
-function createEventBus(
-  publish: EventBus["publish"] = async () => undefined,
-): EventBus {
-  return {
-    publish,
-    subscribe: vi.fn(),
-  };
+function createOutboxPublisher(
+  enqueue: OutboxEventPublisher["enqueue"] = async () => undefined,
+): OutboxEventPublisher {
+  return { enqueue };
 }
 
 function createTokenServiceForTest() {
@@ -66,10 +63,10 @@ function createRefreshTokens(): RefreshTokenRepository {
 }
 
 describe("createUserUseCase", () => {
-  it("creates a user and publishes UserCreated after commit", async () => {
+  it("creates a user and enqueues UserCreated before commit", async () => {
     let committed = false;
     const publish = vi.fn(async () => {
-      expect(committed).toBe(true);
+      expect(committed).toBe(false);
     });
     const userRepository: UserRepository = {
       findById: vi.fn(async () => null),
@@ -86,7 +83,7 @@ describe("createUserUseCase", () => {
           return result;
         },
       },
-      eventBus: createEventBus(publish),
+      outboxEventPublisher: createOutboxPublisher(publish),
       passwordService: {
         hashPassword: vi.fn(async () => "password-hash"),
       },
@@ -135,7 +132,7 @@ describe("createUserUseCase", () => {
           throw new Error("database failure");
         },
       },
-      eventBus: createEventBus(publish),
+      outboxEventPublisher: createOutboxPublisher(publish),
       passwordService: {
         hashPassword: vi.fn(async () => "password-hash"),
       },
@@ -163,7 +160,7 @@ describe("createUserUseCase", () => {
       unitOfWork: {
         run: (work) => work(),
       },
-      eventBus: createEventBus(),
+      outboxEventPublisher: createOutboxPublisher(),
       passwordService: {
         hashPassword: vi.fn(async () => "password-hash"),
       },
@@ -190,7 +187,7 @@ describe("createUserUseCase", () => {
       unitOfWork: {
         run: (work) => work(),
       },
-      eventBus: createEventBus(),
+      outboxEventPublisher: createOutboxPublisher(),
       passwordService: {
         hashPassword: vi.fn(async () => "password-hash"),
       },
@@ -235,7 +232,7 @@ describe("createUserUseCase transaction", () => {
         database,
         logger: createLogger(),
       }),
-      eventBus: createEventBus(),
+      outboxEventPublisher: createOutboxPublisher(),
       passwordService: {
         hashPassword: vi.fn(async () => "password-hash"),
       },

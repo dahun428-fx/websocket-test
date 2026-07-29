@@ -1,19 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { EventBus } from "../events/eventBus";
+import type { OutboxEventPublisher } from "../../outbox/outboxEventPublisher";
 import type { RoomMemberRepository } from "../../repositories/roomMemberRepository";
 import type { RoomRepository } from "../../repositories/roomRepository";
 import { createCreateRoomUseCase } from "./createRoom";
 
 describe("createCreateRoomUseCase domain events", () => {
-  it("publishes RoomCreated only after room and owner commit", async () => {
+  it("enqueues RoomCreated in the room and owner transaction", async () => {
     let committed = false;
-    const publish = vi.fn(async () => {
-      expect(committed).toBe(true);
+    const enqueue = vi.fn(async () => {
+      expect(committed).toBe(false);
     });
-    const eventBus: EventBus = {
-      publish,
-      subscribe: vi.fn(),
+    const outboxEventPublisher: OutboxEventPublisher = {
+      enqueue,
     };
     const roomRepository: RoomRepository = {
       create: vi.fn(async (input) => input),
@@ -33,7 +32,7 @@ describe("createCreateRoomUseCase domain events", () => {
           return result;
         },
       },
-      eventBus,
+      outboxEventPublisher,
       runtime: {
         createId: () => "room-1",
         now: () => new Date("2026-07-27T00:00:00.000Z"),
@@ -45,7 +44,7 @@ describe("createCreateRoomUseCase domain events", () => {
       name: "테스트 방",
     });
 
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
       name: "RoomCreated",
       payload: {
         roomId: "room-1",

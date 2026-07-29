@@ -55,6 +55,7 @@ describe("createCreateRoomUseCase", () => {
         database,
         logger: createLogger(),
       }),
+      outboxEventPublisher: { enqueue: vi.fn() },
     });
 
     const result = await useCase.execute({
@@ -91,6 +92,7 @@ describe("createCreateRoomUseCase", () => {
         database,
         logger: createLogger(),
       }),
+      outboxEventPublisher: { enqueue: vi.fn() },
       runtime: {
         createId: () => "room-rollback",
         now: () => new Date("2026-01-01T00:00:00.000Z"),
@@ -110,6 +112,7 @@ describe("createCreateRoomUseCase", () => {
       roomRepository: createRoomRepository(database),
       roomMemberRepository: createRoomMemberRepository(database),
       unitOfWork,
+      outboxEventPublisher: { enqueue: vi.fn() },
     });
 
     await expect(useCase.execute({

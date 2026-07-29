@@ -84,6 +84,48 @@ export const envSchema = z.object({
         .default("false")
         .transform((value) => value === "true"),
 
+    OUTBOX_WORKER_ENABLED: z
+        .enum(["true", "false"])
+        .default("true")
+        .transform((value) => value === "true"),
+
+    OUTBOX_POLLING_INTERVAL_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(1_000),
+
+    OUTBOX_BATCH_SIZE: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(20),
+
+    OUTBOX_MAXIMUM_ATTEMPTS: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .default(5),
+
+    OUTBOX_STALE_PROCESSING_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(30_000),
+
+    OUTBOX_RETRY_BASE_DELAY_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(1_000),
+
+    OUTBOX_RETRY_MAXIMUM_DELAY_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(60_000),
+
     SEED_USER_PASSWORD: z
         .string()
         .min(1)

@@ -4,12 +4,12 @@ import {
 import { hashRefreshToken } from "../../auth/refreshTokenHash";
 import type { TokenService } from "../../auth/tokenService";
 import type { RefreshTokenRepository } from "../../repositories/refreshTokenRepository";
+import type { OutboxEventPublisher } from "../../outbox/outboxEventPublisher";
 import {
   DuplicateUserIdRepositoryError,
   type UserRepository,
 } from "../../repositories/userRepository";
 import { UserAlreadyExistsError } from "../errors/authErrors";
-import type { EventBus } from "../events/eventBus";
 import { createUserCreatedEvent } from "../events/userEvents";
 import type { UnitOfWork } from "../unitOfWork";
 
@@ -38,7 +38,7 @@ export interface CreateUserUseCaseOptions {
   refreshTokenRepository: RefreshTokenRepository;
   tokenService: TokenService;
   unitOfWork: UnitOfWork;
-  eventBus: EventBus;
+  outboxEventPublisher: OutboxEventPublisher;
   passwordService?: {
     hashPassword(password: string): Promise<string>;
   };
@@ -87,6 +87,12 @@ export function createUserUseCase(
           createdAt,
           expiresAt: refreshToken.expiresAt,
         });
+        await options.outboxEventPublisher.enqueue(createUserCreatedEvent({
+          userId: command.userId,
+          loginId: command.userId,
+          nickname: command.nickname,
+          createdAt,
+        }));
       });
     } catch (error) {
       if (error instanceof DuplicateUserIdRepositoryError) {
@@ -94,13 +100,6 @@ export function createUserUseCase(
       }
       throw error;
     }
-
-    await options.eventBus.publish(createUserCreatedEvent({
-      userId: command.userId,
-      loginId: command.userId,
-      nickname: command.nickname,
-      createdAt,
-    }));
 
     return result;
   }

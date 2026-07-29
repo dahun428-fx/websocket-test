@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import type { RoomMemberRepository } from "../../repositories/roomMemberRepository";
 import type { RoomRepository } from "../../repositories/roomRepository";
+import type { OutboxEventPublisher } from "../../outbox/outboxEventPublisher";
 import { InvalidRoomNameError } from "../errors/roomErrors";
-import type { EventBus } from "../events/eventBus";
 import { createRoomCreatedEvent } from "../events/roomEvents";
 import type { UnitOfWork } from "../unitOfWork";
 
@@ -26,7 +26,7 @@ export interface CreateCreateRoomUseCaseOptions {
   roomRepository: RoomRepository;
   roomMemberRepository: RoomMemberRepository;
   unitOfWork: UnitOfWork;
-  eventBus?: EventBus;
+  outboxEventPublisher: OutboxEventPublisher;
   runtime?: {
     createId?: () => string;
     now?: () => Date;
@@ -60,15 +60,14 @@ export function createCreateRoomUseCase(
         role: "owner",
         joinedAt: createdAt,
       });
+      await options.outboxEventPublisher.enqueue(createRoomCreatedEvent({
+        roomId,
+        ownerId: command.userId,
+        name,
+        createdAt,
+      }));
       return { roomId, name, createdAt };
     });
-
-    await options.eventBus?.publish(createRoomCreatedEvent({
-      roomId,
-      ownerId: command.userId,
-      name,
-      createdAt,
-    }));
 
     return result;
   }

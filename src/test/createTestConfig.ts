@@ -16,6 +16,15 @@ export function createTestConfig(databasePath: string, port = 0): AppConfig {
     },
     rateLimit: { maxAttempts: 10, windowMs: 60_000 },
     heartbeat: { interval_ms: 30_000, debug: false },
+    outbox: {
+      enabled: false,
+      pollingIntervalMs: 1_000,
+      batchSize: 20,
+      maximumAttempts: 5,
+      staleProcessingMs: 30_000,
+      retryBaseDelayMs: 1_000,
+      retryMaximumDelayMs: 60_000,
+    },
     seed: {},
   };
 }

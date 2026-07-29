@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import WebSocket, { type RawData, type WebSocketServer } from "ws";
 
 import { ApplicationError } from "../application/errors/applicationError";
-import type { EventBus } from "../application/events/eventBus";
+import type { UnitOfWork } from "../application/unitOfWork";
 import { dispatchMessage } from "../dispatcher/messageDispatcher";
 import { ERROR_MESSAGES, type ErrorCode } from "../errors/errorMessages";
 import { createChatHandler } from "../handlers/chatHandler";
@@ -11,6 +11,7 @@ import { createHistoryHandler } from "../handlers/historyHandler";
 import { createRegisterHandler } from "../handlers/registerHandler";
 import { logHeartbeat, startHeartbeat } from "../heartbeat/heartbeat";
 import type { Logger } from "../logging/logger";
+import type { OutboxEventPublisher } from "../outbox/outboxEventPublisher";
 import { parseClientMessage } from "../parser/messageParser";
 import { enqueueMessage } from "../queue/messageQueue";
 import type { MessageRepository } from "../repositories/messageRepository";
@@ -23,7 +24,8 @@ import { mapApplicationErrorToWebSocket } from "../websocket/applicationErrorMap
 
 export interface ChatDependencies {
   messageRepository: MessageRepository;
-  eventBus?: EventBus;
+  unitOfWork: UnitOfWork;
+  outboxEventPublisher: OutboxEventPublisher;
   heartbeatIntervalMs: number;
   createTimestamp?: () => string;
   verifyAccessToken(token: string): AccessTokenPayload;
@@ -110,7 +112,8 @@ export function attachChatRuntime(
     chat: createChatHandler({
       roomService,
       messageRepository: dependencies.messageRepository,
-      eventBus: dependencies.eventBus,
+      unitOfWork: dependencies.unitOfWork,
+      outboxEventPublisher: dependencies.outboxEventPublisher,
       sendError,
       createTimestamp,
     }),
