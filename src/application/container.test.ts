@@ -29,6 +29,13 @@ describe("Application container", () => {
     expect(container.outbox.repository).toBeDefined();
     expect(container.outbox.publisher).toBeDefined();
     expect(container.outbox.worker).toBeDefined();
+    expect(container.identity.serverId).toBe("test-server");
+    expect(container.redis.clients.command).toBeDefined();
+    expect(container.redis.lifecycle).toBeDefined();
+    expect(container.presence.repository).toBeDefined();
+    expect(container.realtime.publisher).toBeDefined();
+    expect(container.realtime.subscriber).toBeDefined();
+    expect(container.connections).toBeDefined();
     expect(container.services.authService).toBeDefined();
     expect(container.services.roomService).toBeDefined();
     expect(container.useCases.createRoom).toBeDefined();

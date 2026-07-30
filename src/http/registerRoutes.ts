@@ -14,6 +14,7 @@ import { parseJsonBody } from "./middleware/parseJsonBody";
 import { validateBody } from "./middleware/validateBody";
 import type { HttpRouter } from "./router/router";
 import type { RefreshTokenCookieOptions } from "./cookieUtils";
+import type { DependencyHealth } from "../infrastructure/redis/redisHealthCheck";
 
 export interface RegisterRoutesOptions {
     router: HttpRouter;
@@ -24,6 +25,10 @@ export interface RegisterRoutesOptions {
     maxBodyBytes: number;
     loginRateLimit: LoginRateLimitOptions;
     refreshTokenCookie: RefreshTokenCookieOptions;
+    health: {
+        redisRequired: boolean;
+        checkRedis(): Promise<DependencyHealth>;
+    };
     runtime?: AuthHandlerRuntimeOptions;
 }
 
@@ -39,6 +44,27 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
 
     options.router.get("/", {
         handler: createPublicIndexHandler(options.publicIndexPath),
+    });
+    options.router.get("/health/live", {
+        handler: async (context) => {
+            context.json(200, { status: "alive" });
+        },
+    });
+    options.router.get("/health/ready", {
+        handler: async (context) => {
+            const redis = await options.health.checkRedis();
+            const unavailable = redis.status === "down";
+            const ready = !options.health.redisRequired || !unavailable;
+            context.json(ready ? 200 : 503, {
+                status: ready
+                    ? (unavailable ? "degraded" : "ready")
+                    : "not_ready",
+                dependencies: {
+                    database: "up",
+                    redis,
+                },
+            });
+        },
     });
     options.router.post("/login", {
         middleware: [parseBody, validateBody(loginSchema)],

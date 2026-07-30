@@ -1,9 +1,12 @@
 import type { Logger } from "../../logging/logger";
+import type { RealtimePublisher } from "../../messaging/realtimePublisher";
 import type { EventBus } from "./eventBus";
 
 export interface RegisterEventHandlersOptions {
   eventBus: EventBus;
   logger: Logger;
+  realtimePublisher?: RealtimePublisher;
+  serverId?: string;
 }
 
 export function registerEventHandlers(
@@ -11,7 +14,7 @@ export function registerEventHandlers(
 ): Array<() => void> {
   const { eventBus, logger } = options;
 
-  return [
+  const subscriptions = [
     eventBus.subscribe({
       eventName: "UserCreated",
       handlerName: "LogUserCreated",
@@ -33,6 +36,29 @@ export function registerEventHandlers(
         });
       },
     }),
+  ];
+
+  if (options.realtimePublisher && options.serverId) {
+    subscriptions.push(eventBus.subscribe({
+      eventName: "MessageCreated",
+      handlerName: "PublishMessageRealtime",
+      handler: async (event) => {
+        await options.realtimePublisher?.publish({
+          eventId: event.eventId,
+          type: "message.broadcast",
+          occurredAt: event.occurredAt,
+          sourceServerId: options.serverId!,
+          payload: {
+            messageId: event.payload.messageId,
+            roomId: event.payload.roomId,
+            userId: event.payload.userId,
+          },
+        });
+      },
+    }));
+  }
+
+  subscriptions.push(
     eventBus.subscribe({
       eventName: "MessageCreated",
       handlerName: "LogMessageCreated",
@@ -45,5 +71,7 @@ export function registerEventHandlers(
         });
       },
     }),
-  ];
+  );
+
+  return subscriptions;
 }

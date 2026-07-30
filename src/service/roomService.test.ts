@@ -4,12 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import createRoomService from "./roomService";
 import type { ChatWebSocket } from "../types/websocket";
 
+let connectionSequence = 0;
+
 function createClient(
     roomId: string | null,
     isOpen = true,
     userId: string | null = null,
 ): ChatWebSocket {
     return {
+        connectionId: `connection-${connectionSequence += 1}`,
         userId,
         nickname: null,
         room_id: roomId,

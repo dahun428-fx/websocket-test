@@ -29,6 +29,7 @@ describe("createChatHandler domain events", () => {
         calls.push("save");
         return { ...message, id: 42 };
       }),
+      findById: vi.fn(),
       get: vi.fn(),
       getBefore: vi.fn(),
     };

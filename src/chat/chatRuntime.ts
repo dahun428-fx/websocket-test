@@ -12,6 +12,11 @@ import { createRegisterHandler } from "../handlers/registerHandler";
 import { logHeartbeat, startHeartbeat } from "../heartbeat/heartbeat";
 import type { Logger } from "../logging/logger";
 import type { OutboxEventPublisher } from "../outbox/outboxEventPublisher";
+import {
+  createPresenceHeartbeat,
+  type PresenceHeartbeat,
+} from "../presence/presenceHeartbeat";
+import type { PresenceRepository } from "../presence/presenceRepository";
 import { parseClientMessage } from "../parser/messageParser";
 import { enqueueMessage } from "../queue/messageQueue";
 import type { MessageRepository } from "../repositories/messageRepository";
@@ -21,6 +26,7 @@ import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
 import type { AccessTokenPayload } from "../types/auth";
 import { mapApplicationErrorToWebSocket } from "../websocket/applicationErrorMapper";
+import type { ConnectionRegistry } from "../websocket/connectionRegistry";
 
 export interface ChatDependencies {
   messageRepository: MessageRepository;
@@ -32,6 +38,10 @@ export interface ChatDependencies {
   heartbeatDebug: boolean;
   logger: Logger;
   roomService: RoomService;
+  connectionRegistry: ConnectionRegistry;
+  presenceRepository: PresenceRepository;
+  presenceHeartbeatIntervalMs: number;
+  serverId: string;
 }
 
 export interface ChatRuntime {
@@ -47,6 +57,13 @@ export function attachChatRuntime(
     dependencies.logger.error("WebSocket server error", { error });
   });
   const roomService = dependencies.roomService;
+  const presenceHeartbeats = new Map<string, PresenceHeartbeat>();
+  const pendingPresenceTasks = new Set<Promise<void>>();
+
+  function trackPresenceTask(task: Promise<void>): void {
+    pendingPresenceTasks.add(task);
+    void task.finally(() => pendingPresenceTasks.delete(task));
+  }
 
   const sendJson: SendJson = (socket, payload) => new Promise((resolve, reject) => {
     if (socket.readyState !== WebSocket.OPEN) {
@@ -108,6 +125,31 @@ export function attachChatRuntime(
       sendRoomHistory,
       createTimestamp,
       verifyAccessToken: dependencies.verifyAccessToken,
+      onRegistered: async (socket) => {
+        await dependencies.presenceRepository.register({
+          connectionId: socket.connectionId,
+          userId: socket.userId!,
+          serverId: dependencies.serverId,
+          connectedAt: socket.connectedAt,
+          lastSeenAt: createTimestamp(),
+          roomId: socket.room_id,
+        });
+        const heartbeat = createPresenceHeartbeat({
+          record: () => ({
+            connectionId: socket.connectionId,
+            userId: socket.userId!,
+            serverId: dependencies.serverId,
+            connectedAt: socket.connectedAt,
+            lastSeenAt: createTimestamp(),
+            roomId: socket.room_id,
+          }),
+          intervalMs: dependencies.presenceHeartbeatIntervalMs,
+          presenceRepository: dependencies.presenceRepository,
+          logger: dependencies.logger,
+        });
+        presenceHeartbeats.set(socket.connectionId, heartbeat);
+        heartbeat.start();
+      },
     }),
     chat: createChatHandler({
       roomService,
@@ -152,11 +194,26 @@ export function attachChatRuntime(
     }
   }
 
-  function handleClose(socket: ChatWebSocket, logger: Logger, closeCode: number): void {
+  async function handleClose(
+    socket: ChatWebSocket,
+    logger: Logger,
+    closeCode: number,
+  ): Promise<void> {
     socket.isClosed = true;
     logger.info("WebSocket disconnected", { closeCode });
     const nickname = socket.nickname;
+    const userId = socket.userId;
     const roomId = roomService.leave(socket);
+    dependencies.connectionRegistry.remove(socket.connectionId);
+    presenceHeartbeats.get(socket.connectionId)?.stop();
+    presenceHeartbeats.delete(socket.connectionId);
+    if (userId) {
+      await dependencies.presenceRepository.unregister({
+        connectionId: socket.connectionId,
+        userId,
+        roomId,
+      });
+    }
     if (!nickname || !roomId) return;
 
     roomService.broadcastToRoom(roomId, {
@@ -172,12 +229,14 @@ export function attachChatRuntime(
   webSocketServer.on("connection", (connection) => {
     const socket = connection as ChatWebSocket;
     socket.connectionId = randomUUID();
+    socket.connectedAt = createTimestamp();
     socket.userId = null;
     socket.nickname = null;
     socket.room_id = null;
     socket.messageQueue = Promise.resolve();
     socket.isClosed = false;
     socket.isAlive = true;
+    dependencies.connectionRegistry.add(socket);
     const connectionLogger = dependencies.logger.child({ connectionId: socket.connectionId });
 
     connectionLogger.info("WebSocket connected");
@@ -205,7 +264,14 @@ export function attachChatRuntime(
       socket.isAlive = true;
       logHeartbeat("pong", socket, dependencies.logger, dependencies.heartbeatDebug);
     });
-    socket.on("close", (closeCode) => handleClose(socket, connectionLogger, closeCode));
+    socket.on("close", (closeCode) => {
+      const task = handleClose(socket, connectionLogger, closeCode).catch(
+        (error) => {
+          connectionLogger.warn("WebSocket presence cleanup failed", { error });
+        },
+      );
+      trackPresenceTask(task);
+    });
     socket.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code !== "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH") {
         connectionLogger.error("WebSocket connection error", { error });
@@ -226,7 +292,10 @@ export function attachChatRuntime(
       if (closed) return;
       closed = true;
       clearInterval(heartbeatTimer);
+      for (const heartbeat of presenceHeartbeats.values()) heartbeat.stop();
+      await dependencies.connectionRegistry.closeAll();
       webSocketServer.clients.forEach((client) => client.terminate());
+      await Promise.allSettled([...pendingPresenceTasks]);
       await new Promise<void>((resolve, reject) => {
         webSocketServer.close((error) => {
           if (error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING") {

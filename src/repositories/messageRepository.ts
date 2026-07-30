@@ -38,6 +38,7 @@ function toHistoryPage(rows: MessageRow[], limit: number): MessageHistoryPage {
 
 export interface MessageRepository {
   save(roomId: string, message: NewChatMessage): Promise<ChatMessage>;
+  findById(messageId: string): Promise<ChatMessage | null>;
   get(roomId: string): Promise<MessageHistoryPage>;
   getBefore(
     roomId: string,
@@ -88,6 +89,17 @@ export function createMessageRepository(
     return toHistoryPage(rows, limit);
   }
 
+  async function findById(messageId: string): Promise<ChatMessage | null> {
+    if (!/^[1-9]\d*$/.test(messageId)) return null;
+    const row = await database.get<MessageRow>(
+      `SELECT id, room_id, nickname, message, created_at
+       FROM messages
+       WHERE id = ?`,
+      Number(messageId),
+    );
+    return row ? toChatMessage(row) : null;
+  }
+
   async function getBefore(
     roomId: string,
     beforeId: number,
@@ -109,5 +121,5 @@ export function createMessageRepository(
     return toHistoryPage(rows, limit);
   }
 
-  return { save, get, getBefore };
+  return { save, findById, get, getBefore };
 }

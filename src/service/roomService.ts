@@ -1,7 +1,15 @@
-import WebSocket, { WebSocketServer } from "ws";
+import type { WebSocketServer } from "ws";
 
 import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
+import {
+  createBroadcastService,
+  type BroadcastService,
+} from "../websocket/broadcastService";
+import {
+  createConnectionRegistry,
+  type ConnectionRegistry,
+} from "../websocket/connectionRegistry";
 
 export interface RoomService {
   join(ws: ChatWebSocket, roomId: string): string;
@@ -15,24 +23,22 @@ export interface RoomService {
 }
 
 export interface CreateRoomServiceOptions {
-  webSocketServer: WebSocketServer;
+  connectionRegistry?: ConnectionRegistry;
+  broadcastService?: BroadcastService;
+  webSocketServer?: WebSocketServer;
 }
 
 function createRoomService(options: CreateRoomServiceOptions): RoomService {
-  const wss = options.webSocketServer;
-  if (!wss || !wss.clients) {
-    throw new Error("createRoomService에는 WebSocketServer 인스턴스가 필요합니다.");
-  }
+  const connectionRegistry = options.connectionRegistry ??
+    createConnectionRegistry({ webSocketServer: options.webSocketServer });
+  const broadcastService = options.broadcastService ??
+    createBroadcastService(connectionRegistry);
 
   function getUserCount(roomId: string): number {
     const userIds = new Set<string>();
 
-    wss.clients.forEach((client) => {
-      const ws = client as ChatWebSocket;
-      const isOpen = ws.readyState === WebSocket.OPEN;
-      const isSameRoom = ws.room_id === roomId;
-
-      if (isOpen && isSameRoom && ws.userId) {
+    connectionRegistry.findByRoomId(roomId).forEach((ws) => {
+      if (ws.userId) {
         userIds.add(ws.userId);
       }
     });
@@ -45,23 +51,7 @@ function createRoomService(options: CreateRoomServiceOptions): RoomService {
       return 0;
     }
 
-    const json = JSON.stringify(payload);
-    let sentCount = 0;
-
-    wss.clients.forEach((client) => {
-      const chatClient = client as ChatWebSocket;
-      const isOpen = chatClient.readyState === WebSocket.OPEN;
-      const isSameRoom = chatClient.room_id === roomId;
-
-      if (!isOpen || !isSameRoom) {
-        return;
-      }
-
-      chatClient.send(json);
-      sentCount += 1;
-    });
-
-    return sentCount;
+    return broadcastService.toRoom(roomId, payload);
   }
 
   function getConnectionCount(roomId: string): number {
@@ -69,20 +59,7 @@ function createRoomService(options: CreateRoomServiceOptions): RoomService {
       return 0;
     }
 
-    let count = 0;
-
-    wss.clients.forEach((client) => {
-      const chatClient = client as ChatWebSocket;
-
-      if (
-        chatClient.readyState === WebSocket.OPEN &&
-        chatClient.room_id === roomId
-      ) {
-        count += 1;
-      }
-    });
-
-    return count;
+    return connectionRegistry.findByRoomId(roomId).length;
   }
 
   function getClients(roomId: string): ChatWebSocket[] {
@@ -90,36 +67,15 @@ function createRoomService(options: CreateRoomServiceOptions): RoomService {
       return [];
     }
 
-    return [...wss.clients].filter((client): client is ChatWebSocket => {
-      const chatClient = client as ChatWebSocket;
-
-      return (
-        chatClient.readyState === WebSocket.OPEN &&
-        chatClient.room_id === roomId
-      );
-    });
+    return connectionRegistry.findByRoomId(roomId);
   }
 
   function getUserConnections(userId: string): ChatWebSocket[] {
-    return [...wss.clients].filter((client): client is ChatWebSocket => {
-      const chatClient = client as ChatWebSocket;
-
-      return (
-        chatClient.readyState === WebSocket.OPEN &&
-        chatClient.userId === userId
-      );
-    });
+    return connectionRegistry.findByUserId(userId);
   }
 
   function sendToUser(userId: string, payload: ServerMessage): number {
-    const clients = getUserConnections(userId);
-    const json = JSON.stringify(payload);
-
-    clients.forEach((client) => {
-      client.send(json);
-    });
-
-    return clients.length;
+    return broadcastService.toUser(userId, payload);
   }
 
   function join(ws: ChatWebSocket, roomId: string): string {

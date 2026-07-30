@@ -13,6 +13,7 @@ export interface RegisterHandlerDependencies {
   sendRoomHistory(socket: ChatWebSocket, roomId: string): Promise<void>;
   createTimestamp(): string;
   verifyAccessToken(token: string): AccessTokenPayload;
+  onRegistered?(socket: ChatWebSocket): Promise<void>;
 }
 
 export function createRegisterHandler(dependencies: RegisterHandlerDependencies) {
@@ -57,6 +58,7 @@ export function createRegisterHandler(dependencies: RegisterHandlerDependencies)
     socket.nickname = nickname;
 
     try {
+      await dependencies.onRegistered?.(socket);
       const roomConnectionCount = roomService.getConnectionCount(roomId);
       const roomUserCount = roomService.getUserCount(roomId);
 

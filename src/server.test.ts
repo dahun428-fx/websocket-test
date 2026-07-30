@@ -72,6 +72,22 @@ describe("Application", () => {
     });
   });
 
+  it("separates liveness from readiness and reports disabled Redis", async () => {
+    const live = await fetch(`${baseUrl}/health/live`);
+    const ready = await fetch(`${baseUrl}/health/ready`);
+
+    expect(live.status).toBe(200);
+    await expect(live.json()).resolves.toEqual({ status: "alive" });
+    expect(ready.status).toBe(200);
+    await expect(ready.json()).resolves.toMatchObject({
+      status: "ready",
+      dependencies: {
+        database: "up",
+        redis: { status: "disabled" },
+      },
+    });
+  });
+
   it("rotates refresh tokens and invalidates them on logout", async () => {
     const loginResponse = await fetch(`${baseUrl}/login`, {
       method: "POST",

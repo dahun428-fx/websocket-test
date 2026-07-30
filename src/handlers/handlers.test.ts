@@ -44,6 +44,7 @@ function createRoomService(): RoomService {
 function createMessageRepository(): MessageRepository {
   return {
     save: vi.fn(async (_roomId, message) => ({ ...message, id: 1 })),
+    findById: vi.fn(async () => null),
     get: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
     getBefore: vi.fn(async () => ({ messages: [], hasMore: false, nextBeforeId: null })),
   };

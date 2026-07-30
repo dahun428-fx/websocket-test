@@ -4,6 +4,7 @@ import type { Logger } from "../../logging/logger";
 import { createInMemoryEventBus } from "./inMemoryEventBus";
 import { registerEventHandlers } from "./registerEventHandlers";
 import { createUserCreatedEvent } from "./userEvents";
+import { createMessageCreatedEvent } from "./messageEvents";
 
 function createLogger(): Logger {
   return {
@@ -40,5 +41,37 @@ describe("registerEventHandlers", () => {
     await eventBus.publish(event);
 
     expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it("publishes MessageCreated as a server-scoped realtime signal", async () => {
+    const logger = createLogger();
+    const eventBus = createInMemoryEventBus({ logger });
+    const publish = vi.fn(async () => undefined);
+    registerEventHandlers({
+      eventBus,
+      logger,
+      realtimePublisher: { publish },
+      serverId: "server-a",
+    });
+    const event = createMessageCreatedEvent({
+      messageId: "42",
+      roomId: "room-1",
+      userId: "user-1",
+      createdAt: "2026-07-29T00:00:00.000Z",
+    });
+
+    await eventBus.publish(event);
+
+    expect(publish).toHaveBeenCalledWith({
+      eventId: event.eventId,
+      type: "message.broadcast",
+      occurredAt: event.occurredAt,
+      sourceServerId: "server-a",
+      payload: {
+        messageId: "42",
+        roomId: "room-1",
+        userId: "user-1",
+      },
+    });
   });
 });

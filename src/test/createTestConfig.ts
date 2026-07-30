@@ -25,6 +25,26 @@ export function createTestConfig(databasePath: string, port = 0): AppConfig {
       retryBaseDelayMs: 1_000,
       retryMaximumDelayMs: 60_000,
     },
+    redis: {
+      enabled: false,
+      required: false,
+      url: "redis://localhost:6379",
+      keyPrefix: "chat-app:test",
+      connectTimeoutMs: 500,
+      commandTimeoutMs: 500,
+      reconnect: {
+        baseDelayMs: 10,
+        maximumDelayMs: 100,
+        maximumRetries: 0,
+      },
+      presence: {
+        ttlSeconds: 30,
+        heartbeatIntervalMs: 10_000,
+      },
+    },
+    identity: {
+      serverId: "test-server",
+    },
     seed: {},
   };
 }

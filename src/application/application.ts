@@ -17,6 +17,9 @@ export function createApplication(container: ApplicationContainer): Application 
     runtimes,
     lifecycle,
     outbox,
+    redis,
+    realtime,
+    identity,
   } = container;
   let stopped = false;
   let stopPromise: Promise<void> | null = null;
@@ -26,6 +29,16 @@ export function createApplication(container: ApplicationContainer): Application 
     if (servers.httpServer.listening) return (servers.httpServer.address() as AddressInfo).port;
 
     try {
+      const redisAvailable = await redis.lifecycle.start();
+      if (redisAvailable) {
+        try {
+          await realtime.subscriber.start(realtime.handler);
+        } catch (error) {
+          logger.error("Redis realtime subscriber startup failed", { error });
+          if (config.redis.required) throw error;
+          logger.warn("Realtime subscriber unavailable; local broadcast only");
+        }
+      }
       await outbox.worker.start();
       await new Promise<void>((resolve, reject) => {
         const onError = (error: Error) => {
@@ -46,7 +59,12 @@ export function createApplication(container: ApplicationContainer): Application 
     }
 
     const port = (servers.httpServer.address() as AddressInfo).port;
-    logger.info("Application started", { host: config.server.host, port });
+    logger.info("Application started", {
+      host: config.server.host,
+      port,
+      serverId: identity.serverId,
+      redisAvailable: redis.lifecycle.isAvailable(),
+    });
     return port;
   }
 
@@ -63,11 +81,13 @@ export function createApplication(container: ApplicationContainer): Application 
           });
         } catch (error) { errors.push(error); }
       }
-      try { await runtimes.chatRuntime.close(); } catch (error) { errors.push(error); }
       try { await outbox.worker.stop(); } catch (error) { errors.push(error); }
+      try { await realtime.subscriber.stop(); } catch (error) { errors.push(error); }
+      try { await runtimes.chatRuntime.close(); } catch (error) { errors.push(error); }
       for (const unsubscribe of lifecycle.unsubscribeEventHandlers) {
         try { unsubscribe(); } catch (error) { errors.push(error); }
       }
+      try { await redis.lifecycle.stop(); } catch (error) { errors.push(error); }
       try { await database.close(); } catch (error) { errors.push(error); }
       stopped = true;
       if (errors.length > 0) throw new AggregateError(errors, "애플리케이션 종료 중 오류가 발생했습니다.");
