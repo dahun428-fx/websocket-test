@@ -20,11 +20,6 @@ import type { HttpContext } from "../context/httpContext";
 import { HttpError } from "../errors/httpError";
 import type { RouteHandler } from "../middleware/middleware";
 
-export interface LoginRateLimitOptions {
-    maxAttempts: number;
-    windowMs: number;
-}
-
 export interface AuthHandlerRuntimeOptions {
     now?: () => number;
 }
@@ -32,7 +27,6 @@ export interface AuthHandlerRuntimeOptions {
 export interface CreateAuthHandlersOptions {
     authService: AuthService;
     createUserUseCase: CreateUserUseCase;
-    loginRateLimit: LoginRateLimitOptions;
     refreshTokenCookie: RefreshTokenCookieOptions;
     runtime?: AuthHandlerRuntimeOptions;
 }
@@ -42,36 +36,6 @@ export interface AuthHandlers {
     signup: RouteHandler;
     refresh: RouteHandler;
     logout: RouteHandler;
-}
-
-interface RateLimitEntry {
-    attempts: number;
-    resetAt: number;
-}
-
-function createLoginLimiter(options: LoginRateLimitOptions, now: () => number) {
-    const entries = new Map<string, RateLimitEntry>();
-
-    return {
-        consume(key: string): number | null {
-            const currentTime = now();
-            const current = entries.get(key);
-            const entry = !current || current.resetAt <= currentTime
-                ? { attempts: 0, resetAt: currentTime + options.windowMs }
-                : current;
-
-            if (entry.attempts >= options.maxAttempts) {
-                return Math.max(1, Math.ceil((entry.resetAt - currentTime) / 1_000));
-            }
-
-            entry.attempts += 1;
-            entries.set(key, entry);
-            return null;
-        },
-        reset(key: string): void {
-            entries.delete(key);
-        },
-    };
 }
 
 function sendAuthResult(
@@ -94,32 +58,14 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
     const {
         authService,
         createUserUseCase,
-        loginRateLimit,
         refreshTokenCookie,
         runtime = {},
     } = options;
     const now = runtime.now ?? Date.now;
-    const limiter = createLoginLimiter(loginRateLimit, now);
-
     const login: RouteHandler = async (context) => {
         const input = context.body as LoginInput;
-        const remoteAddress = context.req.socket.remoteAddress ?? "unknown";
-        const ipKey = `ip:${remoteAddress}`;
-        const accountKey = `account:${remoteAddress}:${input.userId}`;
 
         context.logger.info("Login attempt", { userId: input.userId });
-        const retryAfter = limiter.consume(ipKey) ?? limiter.consume(accountKey);
-        if (retryAfter !== null) {
-            throw new HttpError({
-                statusCode: 429,
-                code: "LOGIN_RATE_LIMITED",
-                message: "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
-                headers: {
-                    "Cache-Control": "no-store",
-                    "Retry-After": String(retryAfter),
-                },
-            });
-        }
 
         let result: AuthResult;
         try {
@@ -138,7 +84,6 @@ export function createAuthHandlers(options: CreateAuthHandlersOptions): AuthHand
             throw error;
         }
 
-        limiter.reset(accountKey);
         context.logger.info("Login succeeded", { userId: result.user.userId });
         sendAuthResult(context, 200, result, refreshTokenCookie, now);
     };

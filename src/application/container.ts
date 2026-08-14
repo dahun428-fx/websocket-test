@@ -24,6 +24,11 @@ import { registerRoutes } from "../http/registerRoutes";
 import { createHttpRouter } from "../http/router/router";
 import type { AuthHandlerRuntimeOptions } from "../http/handlers/authHandlers";
 import type { Logger } from "../logging/logger";
+import { createLoginRateLimitMiddleware } from "../http/middleware/loginRateLimitMiddleware";
+import type { Middleware } from "../http/middleware/middleware";
+import { createRedisRateLimiter } from "../rateLimit/redisRateLimiter";
+import { createResilientRateLimiter } from "../rateLimit/resilientRateLimiter";
+import type { RateLimiter } from "../rateLimit/rateLimiter";
 import { createRedisClients } from "../infrastructure/redis/createRedisClients";
 import {
   checkRedisHealth,
@@ -91,6 +96,10 @@ export interface ApplicationContainer {
     channels: RedisChannels;
     health(): Promise<DependencyHealth>;
   };
+  rateLimit: {
+    limiter: RateLimiter;
+    loginMiddleware: Middleware;
+  };
   presence: {
     repository: PresenceRepository;
   };
@@ -138,6 +147,7 @@ export interface CreateApplicationContainerOptions {
   websocketMaxPayloadBytes?: number;
   publicIndexPath?: string;
   authHttpRuntime?: AuthHandlerRuntimeOptions;
+  rateLimiter?: RateLimiter;
 }
 
 export async function createApplicationContainer(
@@ -174,6 +184,22 @@ export async function createApplicationContainer(
   });
   const redisKeys = createRedisKeys(config.redis.keyPrefix);
   const redisChannels = createRedisChannels(config.redis.keyPrefix);
+  const rateLimiter = options.rateLimiter ?? createResilientRateLimiter({
+    primary: config.redis.enabled
+      ? createRedisRateLimiter({ redis: redisClients.command })
+      : undefined,
+    failMode: config.rateLimit.failMode,
+    logger: logger.child({ component: "RateLimiter" }),
+  });
+  const loginRateLimitMiddleware = createLoginRateLimitMiddleware({
+    rateLimiter,
+    redisKeys,
+    policy: {
+      limit: config.rateLimit.maxAttempts,
+      windowMs: config.rateLimit.windowMs,
+    },
+    trustProxy: config.server.trustProxy,
+  });
   const redisPresenceRepository = createRedisPresenceRepository({
     client: redisClients.command,
     keys: redisKeys,
@@ -219,7 +245,7 @@ export async function createApplicationContainer(
     tokenService,
     publicIndexPath: options.publicIndexPath ?? path.join(__dirname, "..", "..", "public", "index.html"),
     maxBodyBytes: 16 * 1024,
-    loginRateLimit: config.rateLimit,
+    loginRateLimitMiddleware,
     refreshTokenCookie: config.auth.refreshToken.cookie,
     health: {
       redisRequired: config.redis.required,
@@ -312,6 +338,10 @@ export async function createApplicationContainer(
         client: redisClients.command,
         timeoutMs: config.redis.commandTimeoutMs,
       }),
+    },
+    rateLimit: {
+      limiter: rateLimiter,
+      loginMiddleware: loginRateLimitMiddleware,
     },
     presence: {
       repository: presenceRepository,

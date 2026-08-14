@@ -6,12 +6,12 @@ import type { AuthService } from "../service/authService";
 import {
     createAuthHandlers,
     type AuthHandlerRuntimeOptions,
-    type LoginRateLimitOptions,
 } from "./handlers/authHandlers";
 import { createPublicIndexHandler } from "./handlers/publicIndexHandler";
 import { authenticate } from "./middleware/authenticate";
 import { parseJsonBody } from "./middleware/parseJsonBody";
 import { validateBody } from "./middleware/validateBody";
+import type { Middleware } from "./middleware/middleware";
 import type { HttpRouter } from "./router/router";
 import type { RefreshTokenCookieOptions } from "./cookieUtils";
 import type { DependencyHealth } from "../infrastructure/redis/redisHealthCheck";
@@ -23,7 +23,7 @@ export interface RegisterRoutesOptions {
     tokenService: TokenService;
     publicIndexPath: string;
     maxBodyBytes: number;
-    loginRateLimit: LoginRateLimitOptions;
+    loginRateLimitMiddleware: Middleware;
     refreshTokenCookie: RefreshTokenCookieOptions;
     health: {
         redisRequired: boolean;
@@ -36,7 +36,6 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
     const handlers = createAuthHandlers({
         authService: options.authService,
         createUserUseCase: options.createUserUseCase,
-        loginRateLimit: options.loginRateLimit,
         refreshTokenCookie: options.refreshTokenCookie,
         runtime: options.runtime,
     });
@@ -67,7 +66,11 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
         },
     });
     options.router.post("/login", {
-        middleware: [parseBody, validateBody(loginSchema)],
+        middleware: [
+            parseBody,
+            validateBody(loginSchema),
+            options.loginRateLimitMiddleware,
+        ],
         handler: handlers.login,
     });
     options.router.post("/signup", {

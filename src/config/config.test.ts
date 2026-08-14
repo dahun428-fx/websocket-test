@@ -23,6 +23,8 @@ describe("createConfig", () => {
       REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS: "3600",
       AUTH_RATE_LIMIT_MAX_ATTEMPTS: "7",
       AUTH_RATE_LIMIT_WINDOW_MS: "120000",
+      RATE_LIMIT_FAIL_MODE: "closed",
+      TRUST_PROXY: "true",
       HEARTBEAT_INTERVAL_MS: "45000",
       REDIS_PRESENCE_TTL_SECONDS: "60",
       REDIS_PRESENCE_HEARTBEAT_INTERVAL_MS: "15000",
@@ -30,7 +32,12 @@ describe("createConfig", () => {
 
     expect(config.server.port).toBe(4010);
     expect(config.auth.refreshToken.cookie.maxAgeSeconds).toBe(3600);
-    expect(config.rateLimit).toEqual({ maxAttempts: 7, windowMs: 120000 });
+    expect(config.server.trustProxy).toBe(true);
+    expect(config.rateLimit).toEqual({
+      maxAttempts: 7,
+      windowMs: 120000,
+      failMode: "closed",
+    });
     expect(config.heartbeat.interval_ms).toBe(45000);
     expect(config.redis.presence).toEqual({
       ttlSeconds: 60,

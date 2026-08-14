@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-    InvalidCredentialsError,
     InvalidRefreshTokenError,
 } from "../../application/errors/authErrors";
 import type { CreateUserUseCase } from "../../application/user/createUser";
@@ -49,13 +48,11 @@ function createUserUseCase(): CreateUserUseCase {
 
 function createHandlers(
     authService: AuthService,
-    maxAttempts = 5,
     userUseCase = createUserUseCase(),
 ) {
     return createAuthHandlers({
         authService,
         createUserUseCase: userUseCase,
-        loginRateLimit: { maxAttempts, windowMs: 60_000 },
         refreshTokenCookie: {
             name: "refresh_token",
             maxAgeSeconds: 60_000,
@@ -81,7 +78,7 @@ describe("auth route handlers", () => {
             password: "never-log-this",
         });
 
-        await createHandlers(authService, 5, userUseCase).signup(context);
+        await createHandlers(authService, userUseCase).signup(context);
 
         expect(userUseCase.execute).toHaveBeenCalledWith({
             userId: "user-100",
@@ -119,23 +116,6 @@ describe("auth route handlers", () => {
         );
         expect(JSON.stringify(logger.info.mock.calls)).not.toContain("never-log-this");
         expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("never-log-this");
-    });
-
-    it("limits repeated login attempts", async () => {
-        const authService = createAuthService();
-        vi.mocked(authService.login).mockRejectedValue(new InvalidCredentialsError());
-        const handlers = createHandlers(authService, 1);
-        const first = createContext({ userId: "user-100", password: "invalid-password" });
-        const second = createContext({ userId: "user-100", password: "invalid-password" });
-
-        await expect(handlers.login(first.context)).rejects.toMatchObject({
-            code: "INVALID_CREDENTIALS",
-        });
-        await expect(handlers.login(second.context)).rejects.toMatchObject({
-            code: "LOGIN_RATE_LIMITED",
-            headers: { "Retry-After": "60" },
-        });
-        expect(authService.login).toHaveBeenCalledTimes(1);
     });
 
     it("clears an invalid refresh-token cookie", async () => {

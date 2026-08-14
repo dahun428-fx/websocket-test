@@ -38,6 +38,8 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(60_000),
+  RATE_LIMIT_FAIL_MODE: z.enum(["open", "closed"]).default("open"),
+  TRUST_PROXY: booleanString("false"),
   HEARTBEAT_INTERVAL_MS: z.coerce
     .number()
     .int()

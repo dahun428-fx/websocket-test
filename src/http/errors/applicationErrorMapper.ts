@@ -18,6 +18,7 @@ const STATUS_BY_ERROR_CODE: Readonly<Record<ApplicationErrorCode, number>> = {
     INVALID_ROOM_NAME: 400,
     ROOM_NOT_FOUND: 404,
     ROOM_ACCESS_DENIED: 403,
+    RATE_LIMIT_EXCEEDED: 429,
 };
 
 export function mapApplicationErrorToHttp(

@@ -27,6 +27,7 @@ export interface AppConfig {
   server: {
     host: string;
     port: number;
+    trustProxy: boolean;
   };
   database: {
     path: string;
@@ -49,6 +50,7 @@ export interface AppConfig {
   rateLimit: {
     maxAttempts: number;
     windowMs: number;
+    failMode: "open" | "closed";
   };
   heartbeat: {
     interval_ms: number;
@@ -96,6 +98,7 @@ function mapEnvironmentToConfig(env: EnvironmentVariables): AppConfig {
     server: {
       host: env.HOST,
       port: env.PORT,
+      trustProxy: env.TRUST_PROXY,
     },
     database: {
       path: env.DATABASE_PATH,
@@ -118,6 +121,7 @@ function mapEnvironmentToConfig(env: EnvironmentVariables): AppConfig {
     rateLimit: {
       maxAttempts: env.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
       windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+      failMode: env.RATE_LIMIT_FAIL_MODE,
     },
     heartbeat: {
       interval_ms: env.HEARTBEAT_INTERVAL_MS,

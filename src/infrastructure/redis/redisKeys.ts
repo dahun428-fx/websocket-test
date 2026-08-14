@@ -2,7 +2,7 @@ export interface RedisKeys {
   presenceUser(userId: string): string;
   presenceConnection(connectionId: string): string;
   roomConnections(roomId: string): string;
-  loginRateLimit(identifier: string): string;
+  loginRateLimit(input: { clientIp: string; loginId: string }): string;
   roomCache(roomId: string): string;
 }
 
@@ -30,11 +30,12 @@ export function createRedisKeys(prefix: string): RedisKeys {
       "room-connections",
       roomId,
     ),
-    loginRateLimit: (identifier) => joinKey(
+    loginRateLimit: ({ clientIp, loginId }) => joinKey(
       normalizedPrefix,
       "rate-limit",
       "login",
-      identifier,
+      clientIp,
+      loginId,
     ),
     roomCache: (roomId) => joinKey(
       normalizedPrefix,

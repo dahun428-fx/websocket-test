@@ -5,7 +5,8 @@ export type ApplicationErrorCode =
     | "REFRESH_TOKEN_REUSED"
     | "INVALID_ROOM_NAME"
     | "ROOM_NOT_FOUND"
-    | "ROOM_ACCESS_DENIED";
+    | "ROOM_ACCESS_DENIED"
+    | "RATE_LIMIT_EXCEEDED";
 
 export interface ApplicationErrorOptions {
     code: ApplicationErrorCode;

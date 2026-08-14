@@ -13,6 +13,36 @@ import { openDatabase } from "./database/database";
 import { createUserRepository } from "./repositories/userRepository";
 import { createTestConfig } from "./test/createTestConfig";
 import { createTestContainer } from "./test/createTestContainer";
+import type { RateLimiter } from "./rateLimit/rateLimiter";
+
+function createInMemoryRateLimiter(): RateLimiter {
+  const entries = new Map<string, { current: number; resetAtMs: number }>();
+
+  return {
+    async consume(input) {
+      const nowMs = Date.now();
+      const previous = entries.get(input.key);
+      const entry = !previous || previous.resetAtMs <= nowMs
+        ? { current: 1, resetAtMs: nowMs + input.windowMs }
+        : { ...previous, current: previous.current + 1 };
+      entries.set(input.key, entry);
+      const allowed = entry.current <= input.limit;
+      const ttlMs = Math.max(entry.resetAtMs - nowMs, 0);
+
+      return {
+        allowed,
+        limit: input.limit,
+        current: entry.current,
+        remaining: Math.max(input.limit - entry.current, 0),
+        retryAfterMs: allowed ? 0 : ttlMs,
+        resetAt: new Date(entry.resetAtMs).toISOString(),
+      };
+    },
+    async reset(key) {
+      entries.delete(key);
+    },
+  };
+}
 
 describe("Application", () => {
   let application: Application;
@@ -31,7 +61,11 @@ describe("Application", () => {
     });
     await database.close();
 
+    const config = createTestConfig(databasePath);
+    config.rateLimit.maxAttempts = 5;
     application = createApplication(await createTestContainer(databasePath, {
+      config,
+      rateLimiter: createInMemoryRateLimiter(),
       websocketMaxPayloadBytes: 64,
     }));
     const port = await application.start();
@@ -188,6 +222,34 @@ describe("Application", () => {
       error: {
         code: "VALIDATION_FAILED",
         requestId: expect.any(String),
+      },
+    });
+  });
+
+  it("returns 429 on the sixth login attempt from the same IP and user ID", async () => {
+    const request = () => fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "user-100", password: "wrong-password" }),
+    });
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      expect((await request()).status).toBe(401);
+    }
+
+    const blocked = await request();
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBeDefined();
+    expect(blocked.headers.get("ratelimit-limit")).toBe("5");
+    expect(blocked.headers.get("ratelimit-remaining")).toBe("0");
+    expect(blocked.headers.get("ratelimit-reset")).toBeDefined();
+    await expect(blocked.json()).resolves.toMatchObject({
+      error: {
+        code: "RATE_LIMIT_EXCEEDED",
+        details: {
+          retryAfterMs: expect.any(Number),
+          resetAt: expect.any(String),
+        },
       },
     });
   });
