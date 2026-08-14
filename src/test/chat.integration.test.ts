@@ -27,6 +27,7 @@ describe("회원가입 → 로그인 → WebSocket 인증 → 채팅 송수신 �
       { config: {
         ...createTestConfig(path.join(testDirectory, "chat-integration.db")),
         rateLimit: { maxAttempts: 100, windowMs: 60_000, failMode: "open" },
+        cache: { roomTtlSeconds: 300 },
       } },
     ));
     const port = await application.start();

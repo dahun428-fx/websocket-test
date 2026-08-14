@@ -15,6 +15,7 @@ export function createTestConfig(databasePath: string, port = 0): AppConfig {
       },
     },
     rateLimit: { maxAttempts: 10, windowMs: 60_000, failMode: "open" },
+    cache: { roomTtlSeconds: 300 },
     heartbeat: { interval_ms: 30_000, debug: false },
     outbox: {
       enabled: false,

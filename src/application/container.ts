@@ -14,6 +14,8 @@ import {
   createCreateRoomUseCase,
   type CreateRoomUseCase,
 } from "./room/createRoom";
+import { createGetRoomUseCase, type GetRoomUseCase } from "./room/getRoom";
+import { createRenameRoomUseCase, type RenameRoomUseCase } from "./room/renameRoom";
 import type { UnitOfWork } from "./unitOfWork";
 import { attachChatRuntime, type ChatRuntime } from "../chat/chatRuntime";
 import type { AppConfig } from "../config";
@@ -24,6 +26,9 @@ import { registerRoutes } from "../http/registerRoutes";
 import { createHttpRouter } from "../http/router/router";
 import type { AuthHandlerRuntimeOptions } from "../http/handlers/authHandlers";
 import type { Logger } from "../logging/logger";
+import type { Cache } from "../cache/cache";
+import { createNoopCache } from "../cache/noopCache";
+import { createRedisCache } from "../cache/redisCache";
 import { createLoginRateLimitMiddleware } from "../http/middleware/loginRateLimitMiddleware";
 import type { Middleware } from "../http/middleware/middleware";
 import { createRedisRateLimiter } from "../rateLimit/redisRateLimiter";
@@ -100,6 +105,9 @@ export interface ApplicationContainer {
     limiter: RateLimiter;
     loginMiddleware: Middleware;
   };
+  cache: {
+    client: Cache;
+  };
   presence: {
     repository: PresenceRepository;
   };
@@ -127,6 +135,8 @@ export interface ApplicationContainer {
   };
   useCases: {
     createRoom: CreateRoomUseCase;
+    getRoom: GetRoomUseCase;
+    renameRoom: RenameRoomUseCase;
     createUser: CreateUserUseCase;
   };
   servers: {
@@ -148,6 +158,7 @@ export interface CreateApplicationContainerOptions {
   publicIndexPath?: string;
   authHttpRuntime?: AuthHandlerRuntimeOptions;
   rateLimiter?: RateLimiter;
+  cache?: Cache;
 }
 
 export async function createApplicationContainer(
@@ -184,6 +195,11 @@ export async function createApplicationContainer(
   });
   const redisKeys = createRedisKeys(config.redis.keyPrefix);
   const redisChannels = createRedisChannels(config.redis.keyPrefix);
+  const cache = options.cache ?? (
+    config.redis.enabled
+      ? createRedisCache({ redis: redisClients.command })
+      : createNoopCache()
+  );
   const rateLimiter = options.rateLimiter ?? createResilientRateLimiter({
     primary: config.redis.enabled
       ? createRedisRateLimiter({ redis: redisClients.command })
@@ -237,11 +253,26 @@ export async function createApplicationContainer(
     unitOfWork,
     outboxEventPublisher,
   });
+  const getRoom = createGetRoomUseCase({
+    roomRepository,
+    cache,
+    redisKeys,
+    cacheTtlSeconds: config.cache.roomTtlSeconds,
+    logger: logger.child({ component: "GetRoomUseCase" }),
+  });
+  const renameRoom = createRenameRoomUseCase({
+    roomRepository,
+    cache,
+    redisKeys,
+    logger: logger.child({ component: "RenameRoomUseCase" }),
+  });
   const router = createHttpRouter();
   registerRoutes({
     router,
     authService,
     createUserUseCase: createUser,
+    getRoomUseCase: getRoom,
+    renameRoomUseCase: renameRoom,
     tokenService,
     publicIndexPath: options.publicIndexPath ?? path.join(__dirname, "..", "..", "public", "index.html"),
     maxBodyBytes: 16 * 1024,
@@ -343,6 +374,7 @@ export async function createApplicationContainer(
       limiter: rateLimiter,
       loginMiddleware: loginRateLimitMiddleware,
     },
+    cache: { client: cache },
     presence: {
       repository: presenceRepository,
     },
@@ -365,7 +397,7 @@ export async function createApplicationContainer(
       roomMemberRepository,
     },
     services: { authService, roomService },
-    useCases: { createRoom, createUser },
+    useCases: { createRoom, getRoom, renameRoom, createUser },
     servers: { httpServer, webSocketServer },
     runtimes: { chatRuntime },
     lifecycle: { unsubscribeEventHandlers },

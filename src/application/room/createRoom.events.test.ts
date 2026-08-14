@@ -17,6 +17,7 @@ describe("createCreateRoomUseCase domain events", () => {
     const roomRepository: RoomRepository = {
       create: vi.fn(async (input) => input),
       findById: vi.fn(async () => null),
+      rename: vi.fn(async () => undefined),
     };
     const roomMemberRepository: RoomMemberRepository = {
       add: vi.fn(async (input) => input),

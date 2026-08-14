@@ -13,4 +13,10 @@ describe("createRedisKeys", () => {
       "websocket-test:local:rate-limit:login:2001%3Adb8%3A%3A1:User%20Name",
     );
   });
+
+  it("creates a versioned room cache key without double encoding", () => {
+    expect(createRedisKeys("test::").roomCache("room / 1")).toBe(
+      "test:cache:v1:room:room%20%2F%201",
+    );
+  });
 });

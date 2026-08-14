@@ -14,9 +14,15 @@ export interface CreateRoomInput {
   createdAt: string;
 }
 
+export interface RenameRoomInput {
+  roomId: string;
+  name: string;
+}
+
 export interface RoomRepository {
   create(input: CreateRoomInput): Promise<Room>;
   findById(roomId: string): Promise<Room | null>;
+  rename(input: RenameRoomInput): Promise<void>;
 }
 
 interface RoomRow {
@@ -64,5 +70,13 @@ export function createRoomRepository(
     return row ? mapRoom(row) : null;
   }
 
-  return { create, findById };
+  async function rename(input: RenameRoomInput): Promise<void> {
+    await database.run(
+      "UPDATE rooms SET name = ? WHERE id = ?",
+      input.name,
+      input.roomId,
+    );
+  }
+
+  return { create, findById, rename };
 }

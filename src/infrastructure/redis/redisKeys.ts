@@ -40,6 +40,7 @@ export function createRedisKeys(prefix: string): RedisKeys {
     roomCache: (roomId) => joinKey(
       normalizedPrefix,
       "cache",
+      "v1",
       "room",
       roomId,
     ),

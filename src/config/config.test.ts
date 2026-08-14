@@ -25,6 +25,7 @@ describe("createConfig", () => {
       AUTH_RATE_LIMIT_WINDOW_MS: "120000",
       RATE_LIMIT_FAIL_MODE: "closed",
       TRUST_PROXY: "true",
+      CACHE_ROOM_TTL_SECONDS: "600",
       HEARTBEAT_INTERVAL_MS: "45000",
       REDIS_PRESENCE_TTL_SECONDS: "60",
       REDIS_PRESENCE_HEARTBEAT_INTERVAL_MS: "15000",
@@ -38,6 +39,7 @@ describe("createConfig", () => {
       windowMs: 120000,
       failMode: "closed",
     });
+    expect(config.cache.roomTtlSeconds).toBe(600);
     expect(config.heartbeat.interval_ms).toBe(45000);
     expect(config.redis.presence).toEqual({
       ttlSeconds: 60,
@@ -63,6 +65,7 @@ describe("createConfig", () => {
     expect(config.redis.enabled).toBe(false);
     expect(config.redis.required).toBe(false);
     expect(config.redis.keyPrefix).toBe("chat-app:development");
+    expect(config.cache.roomTtlSeconds).toBe(300);
   });
 
   it("rejects invalid Redis presence heartbeat and TTL relation", () => {

@@ -52,6 +52,9 @@ export interface AppConfig {
     windowMs: number;
     failMode: "open" | "closed";
   };
+  cache: {
+    roomTtlSeconds: number;
+  };
   heartbeat: {
     interval_ms: number;
     debug: boolean;
@@ -122,6 +125,9 @@ function mapEnvironmentToConfig(env: EnvironmentVariables): AppConfig {
       maxAttempts: env.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
       windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
       failMode: env.RATE_LIMIT_FAIL_MODE,
+    },
+    cache: {
+      roomTtlSeconds: env.CACHE_ROOM_TTL_SECONDS,
     },
     heartbeat: {
       interval_ms: env.HEARTBEAT_INTERVAL_MS,

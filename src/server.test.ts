@@ -11,9 +11,11 @@ import { createApplication, type Application } from "./application";
 import { hashPassword } from "./auth/passwordService";
 import { openDatabase } from "./database/database";
 import { createUserRepository } from "./repositories/userRepository";
+import { createRoomRepository } from "./repositories/roomRepository";
 import { createTestConfig } from "./test/createTestConfig";
 import { createTestContainer } from "./test/createTestContainer";
 import type { RateLimiter } from "./rateLimit/rateLimiter";
+import type { Cache } from "./cache/cache";
 
 function createInMemoryRateLimiter(): RateLimiter {
   const entries = new Map<string, { current: number; resetAtMs: number }>();
@@ -44,6 +46,21 @@ function createInMemoryRateLimiter(): RateLimiter {
   };
 }
 
+function createInMemoryCache(): Cache {
+  const values = new Map<string, unknown>();
+  return {
+    async get<T>(key: string): Promise<T | null> {
+      return values.has(key) ? values.get(key) as T : null;
+    },
+    async set<T>(key: string, value: T): Promise<void> {
+      values.set(key, value);
+    },
+    async delete(key: string): Promise<void> {
+      values.delete(key);
+    },
+  };
+}
+
 describe("Application", () => {
   let application: Application;
   let baseUrl: string;
@@ -59,6 +76,12 @@ describe("Application", () => {
       passwordHash: await hashPassword("test1234"),
       createdAt: "2026-01-01T00:00:00.000Z",
     });
+    await createRoomRepository(database).create({
+      id: "room-100",
+      name: "Original room",
+      createdBy: "user-100",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
     await database.close();
 
     const config = createTestConfig(databasePath);
@@ -66,6 +89,7 @@ describe("Application", () => {
     application = createApplication(await createTestContainer(databasePath, {
       config,
       rateLimiter: createInMemoryRateLimiter(),
+      cache: createInMemoryCache(),
       websocketMaxPayloadBytes: 64,
     }));
     const port = await application.start();
@@ -312,6 +336,46 @@ describe("Application", () => {
     expect(authorized.status).toBe(200);
     await expect(authorized.json()).resolves.toEqual({
       user: { userId: "user-100", nickname: "neo" },
+    });
+  });
+
+  it("reads a room through cache-aside and invalidates it after rename", async () => {
+    const login = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "user-100", password: "test1234" }),
+    });
+    const { accessToken } = await login.json() as { accessToken: string };
+    const headers = { Authorization: `Bearer ${accessToken}` };
+
+    const first = await fetch(`${baseUrl}/rooms/room-100`, { headers });
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toEqual({
+      room: {
+        id: "room-100",
+        name: "Original room",
+        ownerId: "user-100",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+
+    const renamed = await fetch(`${baseUrl}/rooms/room-100`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Renamed room" }),
+    });
+    expect(renamed.status).toBe(204);
+
+    const invalidRename = await fetch(`${baseUrl}/rooms/room-100`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "   " }),
+    });
+    expect(invalidRename.status).toBe(400);
+
+    const refreshed = await fetch(`${baseUrl}/rooms/room-100`, { headers });
+    await expect(refreshed.json()).resolves.toMatchObject({
+      room: { name: "Renamed room" },
     });
   });
 

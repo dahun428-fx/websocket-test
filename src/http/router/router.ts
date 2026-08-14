@@ -13,6 +13,7 @@ export interface RouteOptions {
 export interface HttpRouter {
     get(path: string, options: RouteOptions): void;
     post(path: string, options: RouteOptions): void;
+    patch(path: string, options: RouteOptions): void;
     delete(path: string, options: RouteOptions): void;
     handle(context: HttpContext): Promise<boolean>;
 }
@@ -70,6 +71,9 @@ export function createHttpRouter(): HttpRouter {
         },
         post(path, options) {
             register("POST", path, options)
+        },
+        patch(path, options) {
+            register("PATCH", path, options)
         },
         delete(path, options) {
             register("DELETE", path, options)

@@ -1,13 +1,17 @@
 import type { TokenService } from "../auth/tokenService";
 import type { CreateUserUseCase } from "../application/user/createUser";
+import type { GetRoomUseCase } from "../application/room/getRoom";
+import type { RenameRoomUseCase } from "../application/room/renameRoom";
 import { loginSchema } from "../schemas/loginSchema";
 import { signupRequestSchema } from "../schemas/signupSchema";
+import { renameRoomSchema } from "../schemas/renameRoomSchema";
 import type { AuthService } from "../service/authService";
 import {
     createAuthHandlers,
     type AuthHandlerRuntimeOptions,
 } from "./handlers/authHandlers";
 import { createPublicIndexHandler } from "./handlers/publicIndexHandler";
+import { createRoomHandlers } from "./handlers/roomHandlers";
 import { authenticate } from "./middleware/authenticate";
 import { parseJsonBody } from "./middleware/parseJsonBody";
 import { validateBody } from "./middleware/validateBody";
@@ -20,6 +24,8 @@ export interface RegisterRoutesOptions {
     router: HttpRouter;
     authService: AuthService;
     createUserUseCase: CreateUserUseCase;
+    getRoomUseCase: GetRoomUseCase;
+    renameRoomUseCase: RenameRoomUseCase;
     tokenService: TokenService;
     publicIndexPath: string;
     maxBodyBytes: number;
@@ -40,6 +46,10 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
         runtime: options.runtime,
     });
     const parseBody = parseJsonBody({ maximumBytes: options.maxBodyBytes });
+    const roomHandlers = createRoomHandlers({
+        getRoomUseCase: options.getRoomUseCase,
+        renameRoomUseCase: options.renameRoomUseCase,
+    });
 
     options.router.get("/", {
         handler: createPublicIndexHandler(options.publicIndexPath),
@@ -88,5 +98,17 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
         handler: async (context) => {
             context.json(200, { user: context.user });
         },
+    });
+    options.router.get("/rooms/:roomId", {
+        middleware: [authenticate({ tokenService: options.tokenService })],
+        handler: roomHandlers.get,
+    });
+    options.router.patch("/rooms/:roomId", {
+        middleware: [
+            authenticate({ tokenService: options.tokenService }),
+            parseBody,
+            validateBody(renameRoomSchema),
+        ],
+        handler: roomHandlers.rename,
     });
 }
