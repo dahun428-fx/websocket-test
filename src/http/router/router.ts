@@ -45,6 +45,7 @@ export function createHttpRouter(): HttpRouter {
             }
 
             context.params = match.params
+            context.routePattern = route.path
 
             const composed = composeMiddleware(
                 route.middleware, route.handler

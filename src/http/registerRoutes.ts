@@ -21,6 +21,8 @@ import type { Middleware } from "./middleware/middleware";
 import type { HttpRouter } from "./router/router";
 import type { RefreshTokenCookieOptions } from "./cookieUtils";
 import type { ReadinessService } from "../health/readinessService";
+import { Metrics } from "../metrics/metrics";
+import { createMetricsHandler } from "./handlers/metricsHandler";
 
 export interface RegisterRoutesOptions {
     router: HttpRouter;
@@ -35,6 +37,7 @@ export interface RegisterRoutesOptions {
     refreshTokenCookie: RefreshTokenCookieOptions;
     readinessService: ReadinessService;
     runtime?: AuthHandlerRuntimeOptions;
+    metrics: Metrics;
 }
 
 export function registerRoutes(options: RegisterRoutesOptions): void {
@@ -95,4 +98,7 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
         ],
         handler: roomHandlers.rename,
     });
+    options.router.get("/metrics", {
+        handler: createMetricsHandler(options.metrics)
+    })
 }

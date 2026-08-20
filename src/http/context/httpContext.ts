@@ -9,6 +9,7 @@ export interface HttpContext {
     requestId: string;
     method: string;
     path: string;
+    routePattern: string | null;
 
     query: URLSearchParams;
     params: Record<string, string>;

@@ -87,6 +87,7 @@ import {
   type ConnectionRegistry,
 } from "../websocket/connectionRegistry";
 import type { WebSocketServer } from "ws";
+import { createPrometheusMetrics } from "../metrics/prometheusMetrics";
 
 export interface ApplicationContainer {
   config: AppConfig;
@@ -286,6 +287,9 @@ export async function createApplicationContainer(
     logger: logger.child({ component: "RenameRoomUseCase" }),
   });
   const router = createHttpRouter();
+  const metrics = createPrometheusMetrics();
+
+
   registerRoutes({
     router,
     authService,
@@ -299,11 +303,13 @@ export async function createApplicationContainer(
     refreshTokenCookie: config.auth.refreshToken.cookie,
     readinessService,
     runtime: options.authHttpRuntime,
+    metrics,
   });
   const httpLogger = logger.child({ transport: "http" });
   const webSocketLogger = logger.child({ transport: "websocket" });
   const httpServer = createHttpServer({
     router,
+    metrics,
     logger: httpLogger,
   });
   const webSocketServer = createWebSocketServer({

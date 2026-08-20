@@ -24,6 +24,7 @@ export function createHttpContext(options: CreateHttpContextOptions): HttpContex
         requestId,
         method: req.method ?? "GET",
         path: url.pathname,
+        routePattern: null,
         query: url.searchParams,
         params: {},
         body: undefined,
