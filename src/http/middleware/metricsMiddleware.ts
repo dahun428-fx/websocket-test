@@ -12,7 +12,7 @@ export function metricsMiddleware(metrics: Metrics): Middleware {
 
             metrics.recordHttpRequest({
                 method: context.method,
-                path: context.routePattern ?? "unmacted",
+                path: context.routePattern ?? "unmatched",
                 statusCode: context.res.statusCode,
                 durationSeconds,
             })
