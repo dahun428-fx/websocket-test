@@ -10,4 +10,11 @@ export interface Metrics {
 
     webSocketConnectionOpened(): void;
     webSocketConnectionClosed(): void;
+
+    webSocketMessageReceived(): void;
+    webSocketMessageParseFailed(): void;
+    webSocketMessageHandlingFailed(
+        kind: "application" | "unexpected"
+    ): void;
+
 }

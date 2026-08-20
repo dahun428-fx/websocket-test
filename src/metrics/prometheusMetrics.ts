@@ -14,6 +14,25 @@ export function createPrometheusMetrics(): Metrics {
         registers: [registry],
     })
 
+    const webSocketMessagesReceived = new Counter({
+        name: "websocket_messages_received_total",
+        help: "Total number of received WebSocket messages",
+        registers: [registry],
+    })
+
+    const webSocketMessagesParseFailures = new Counter({
+        name: "websocket_message_parse_failures_total",
+        help: "Total number of WebSocket message parse failures",
+        registers: [registry]
+    })
+
+    const webSocketMessagesHandlingFailures = new Counter({
+        name: "websocket_message_handling_failures_total",
+        help: "Total number of WebSocket message handling failures",
+        labelNames: ["kind"] as const,
+        registers: [registry]
+    })
+
 
     const httpRequests = new Counter({
         name: "http_requests_total",
@@ -74,12 +93,27 @@ export function createPrometheusMetrics(): Metrics {
         webSocketConnections.dec();
     }
 
+    function webSocketMessageReceived(): void {
+        webSocketMessagesReceived.inc();
+    }
+
+    function webSocketMessageParseFailed(): void {
+        webSocketMessagesParseFailures.inc();
+    }
+
+    function webSocketMessageHandlingFailed(kind: "application" | "unexpected"): void {
+        webSocketMessagesHandlingFailures.inc({ kind })
+    }
+
     return {
         recordHttpRequest,
         collect,
         contentType,
         webSocketConnectionClosed,
-        webSocketConnectionOpened
+        webSocketConnectionOpened,
+        webSocketMessageReceived,
+        webSocketMessageParseFailed,
+        webSocketMessageHandlingFailed
     }
 
 }

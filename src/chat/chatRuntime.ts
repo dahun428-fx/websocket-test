@@ -176,6 +176,9 @@ export function attachChatRuntime(
   ): Promise<void> {
     const message = parseClientMessage(rawMessage);
     if (!message) {
+
+      dependencies.metrics.webSocketMessageParseFailed();
+
       await sendErrorSafely(socket, logger, "MESSAGE_PARSE_FAILED");
       return;
     }
@@ -184,12 +187,16 @@ export function attachChatRuntime(
       await dispatchMessage(socket, message, handlers);
     } catch (error) {
       if (error instanceof ApplicationError) {
+        dependencies.metrics.webSocketMessageHandlingFailed("application")
+
         logger.warn("WebSocket operation failed", {
           errorCode: error.code,
         });
         await sendApplicationErrorSafely(socket, logger, error);
         return;
       }
+
+      dependencies.metrics.webSocketMessageHandlingFailed("unexpected")
 
       logger.error("WebSocket message handling failed", { error });
       await sendErrorSafely(socket, logger, "INTERNAL_SERVER_ERROR");
@@ -255,6 +262,9 @@ export function attachChatRuntime(
     });
 
     socket.on("message", (rawMessage) => {
+
+      dependencies.metrics.webSocketMessageReceived();
+
       enqueueMessage(
         socket,
         () => handleMessage(socket, connectionLogger, rawMessage),
