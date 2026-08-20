@@ -317,7 +317,7 @@ export async function createApplicationContainer(
     maxPayloadBytes: options.websocketMaxPayloadBytes ?? 16 * 1024,
   });
   const connectionRegistry = createConnectionRegistry();
-  const broadcastService = createBroadcastService(connectionRegistry);
+  const broadcastService = createBroadcastService({ connectionRegistry, metrics });
   const roomService = createRoomService({
     connectionRegistry,
     broadcastService,

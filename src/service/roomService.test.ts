@@ -108,8 +108,14 @@ describe("roomService", () => {
         const json = JSON.stringify(payload);
 
         expect(sent).toBe(2);
-        expect(firstUserConnection.send).toHaveBeenCalledWith(json);
-        expect(secondUserConnection.send).toHaveBeenCalledWith(json);
+        expect(firstUserConnection.send).toHaveBeenCalledWith(
+            json,
+            expect.any(Function),
+        );
+        expect(secondUserConnection.send).toHaveBeenCalledWith(
+            json,
+            expect.any(Function),
+        );
         expect(closedUserConnection.send).not.toHaveBeenCalled();
         expect(otherUserConnection.send).not.toHaveBeenCalled();
     });

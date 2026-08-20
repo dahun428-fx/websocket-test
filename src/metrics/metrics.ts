@@ -17,4 +17,7 @@ export interface Metrics {
         kind: "application" | "unexpected"
     ): void;
 
+    webSocketMessageSent(source: "direct" | "broadcast"): void;
+    webSocketMessageSendFailed(source: "direct" | "broadcast"): void;
+
 }

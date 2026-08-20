@@ -1,5 +1,6 @@
 import type { WebSocketServer } from "ws";
 
+import type { Metrics } from "../metrics/metrics";
 import type { ServerMessage } from "../types/messages";
 import type { ChatWebSocket } from "../types/websocket";
 import {
@@ -26,13 +27,14 @@ export interface CreateRoomServiceOptions {
   connectionRegistry?: ConnectionRegistry;
   broadcastService?: BroadcastService;
   webSocketServer?: WebSocketServer;
+  metrics?: Metrics;
 }
 
 function createRoomService(options: CreateRoomServiceOptions): RoomService {
   const connectionRegistry = options.connectionRegistry ??
     createConnectionRegistry({ webSocketServer: options.webSocketServer });
   const broadcastService = options.broadcastService ??
-    createBroadcastService(connectionRegistry);
+    createBroadcastService({ connectionRegistry, metrics: options.metrics });
 
   function getUserCount(roomId: string): number {
     const userIds = new Set<string>();

@@ -69,10 +69,20 @@ export function attachChatRuntime(
 
   const sendJson: SendJson = (socket, payload) => new Promise((resolve, reject) => {
     if (socket.readyState !== WebSocket.OPEN) {
+      dependencies.metrics.webSocketMessageSendFailed("direct")
+
       reject(new Error("WebSocket이 열린 상태가 아닙니다."));
       return;
     }
-    socket.send(JSON.stringify(payload), (error) => error ? reject(error) : resolve());
+    socket.send(JSON.stringify(payload), (error) => {
+      if (error) {
+        dependencies.metrics.webSocketMessageSendFailed("direct")
+        reject(error)
+        return;
+      }
+      dependencies.metrics.webSocketMessageSent("direct")
+      resolve();
+    });
   });
 
   const sendError: SendError = (socket, code) => sendJson(socket, {

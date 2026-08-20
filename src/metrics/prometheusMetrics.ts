@@ -33,6 +33,19 @@ export function createPrometheusMetrics(): Metrics {
         registers: [registry]
     })
 
+    const webSocketMessagesSent = new Counter({
+        name: "websocket_messages_sent_total",
+        help: "Total number of successfully sent WebSocket messages",
+        labelNames: ["source"] as const,
+        registers: [registry]
+    })
+
+    const webSocketMessageSendFailures = new Counter({
+        name: "websocket_message_send_failures_total",
+        help: "Total number of failed WebSocket message sends",
+        labelNames: ["source"] as const,
+        registers: [registry]
+    })
 
     const httpRequests = new Counter({
         name: "http_requests_total",
@@ -105,6 +118,14 @@ export function createPrometheusMetrics(): Metrics {
         webSocketMessagesHandlingFailures.inc({ kind })
     }
 
+    function webSocketMessageSent(source: "direct" | "broadcast"): void {
+        webSocketMessagesSent.inc({ source })
+    }
+
+    function webSocketMessageSendFailed(source: "direct" | "broadcast"): void {
+        webSocketMessageSendFailures.inc({ source })
+    }
+
     return {
         recordHttpRequest,
         collect,
@@ -113,7 +134,9 @@ export function createPrometheusMetrics(): Metrics {
         webSocketConnectionOpened,
         webSocketMessageReceived,
         webSocketMessageParseFailed,
-        webSocketMessageHandlingFailed
+        webSocketMessageHandlingFailed,
+        webSocketMessageSent,
+        webSocketMessageSendFailed
     }
 
 }

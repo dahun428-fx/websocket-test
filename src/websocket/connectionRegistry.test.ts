@@ -55,7 +55,7 @@ describe("ConnectionRegistry", () => {
     });
     registry.add(target);
     registry.add(other);
-    const broadcast = createBroadcastService(registry);
+    const broadcast = createBroadcastService({ connectionRegistry: registry });
     const payload = {
       type: "notification" as const,
       room_id: "room-1",
@@ -66,7 +66,10 @@ describe("ConnectionRegistry", () => {
     };
 
     expect(broadcast.toRoom("room-1", payload)).toBe(1);
-    expect(target.send).toHaveBeenCalledWith(JSON.stringify(payload));
+    expect(target.send).toHaveBeenCalledWith(
+      JSON.stringify(payload),
+      expect.any(Function),
+    );
     expect(other.send).not.toHaveBeenCalled();
   });
 });
