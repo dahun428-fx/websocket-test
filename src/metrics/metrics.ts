@@ -7,4 +7,7 @@ export interface Metrics {
     }): void;
     contentType(): string;
     collect(): Promise<string>
+
+    webSocketConnectionOpened(): void;
+    webSocketConnectionClosed(): void;
 }

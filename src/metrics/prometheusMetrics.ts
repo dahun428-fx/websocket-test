@@ -1,9 +1,19 @@
-import { Counter, Histogram, Registry } from "prom-client";
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from "prom-client";
 import { Metrics } from "./metrics";
 
 export function createPrometheusMetrics(): Metrics {
 
     const registry = new Registry();
+    collectDefaultMetrics({
+        register: registry,
+    })
+
+    const webSocketConnections = new Gauge({
+        name: "websocket_connections",
+        help: "Current number of active WebSocket connections",
+        registers: [registry],
+    })
+
 
     const httpRequests = new Counter({
         name: "http_requests_total",
@@ -56,10 +66,20 @@ export function createPrometheusMetrics(): Metrics {
         return registry.contentType;
     }
 
+    function webSocketConnectionOpened(): void {
+        webSocketConnections.inc();
+    }
+
+    function webSocketConnectionClosed(): void {
+        webSocketConnections.dec();
+    }
+
     return {
         recordHttpRequest,
         collect,
         contentType,
+        webSocketConnectionClosed,
+        webSocketConnectionOpened
     }
 
 }

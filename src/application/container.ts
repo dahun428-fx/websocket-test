@@ -368,6 +368,7 @@ export async function createApplicationContainer(
     presenceHeartbeatIntervalMs:
       config.redis.presence.heartbeatIntervalMs,
     serverId,
+    metrics,
   });
 
   return {

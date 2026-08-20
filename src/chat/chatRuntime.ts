@@ -27,6 +27,7 @@ import type { ChatWebSocket } from "../types/websocket";
 import type { AccessTokenPayload } from "../types/auth";
 import { mapApplicationErrorToWebSocket } from "../websocket/applicationErrorMapper";
 import type { ConnectionRegistry } from "../websocket/connectionRegistry";
+import { Metrics } from "../metrics/metrics";
 
 export interface ChatDependencies {
   messageRepository: MessageRepository;
@@ -42,6 +43,7 @@ export interface ChatDependencies {
   presenceRepository: PresenceRepository;
   presenceHeartbeatIntervalMs: number;
   serverId: string;
+  metrics: Metrics;
 }
 
 export interface ChatRuntime {
@@ -205,6 +207,7 @@ export function attachChatRuntime(
     const userId = socket.userId;
     const roomId = roomService.leave(socket);
     dependencies.connectionRegistry.remove(socket.connectionId);
+    dependencies.metrics.webSocketConnectionClosed();
     presenceHeartbeats.get(socket.connectionId)?.stop();
     presenceHeartbeats.delete(socket.connectionId);
     if (userId) {
@@ -237,6 +240,7 @@ export function attachChatRuntime(
     socket.isClosed = false;
     socket.isAlive = true;
     dependencies.connectionRegistry.add(socket);
+    dependencies.metrics.webSocketConnectionOpened();
     const connectionLogger = dependencies.logger.child({ connectionId: socket.connectionId });
 
     connectionLogger.info("WebSocket connected");
