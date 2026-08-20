@@ -35,10 +35,13 @@ import { createRedisRateLimiter } from "../rateLimit/redisRateLimiter";
 import { createResilientRateLimiter } from "../rateLimit/resilientRateLimiter";
 import type { RateLimiter } from "../rateLimit/rateLimiter";
 import { createRedisClients } from "../infrastructure/redis/createRedisClients";
+import { createDatabaseHealthCheck } from "../health/databaseHealthCheck";
+import { createRedisHealthCheck } from "../health/redisHealthCheck";
 import {
-  checkRedisHealth,
-  type DependencyHealth,
-} from "../infrastructure/redis/redisHealthCheck";
+  createReadinessService,
+  type ReadinessService,
+} from "../health/readinessService";
+import type { HealthCheck, HealthCheckResult } from "../health/health";
 import {
   createRedisKeys,
   createRedisChannels,
@@ -99,7 +102,7 @@ export interface ApplicationContainer {
     lifecycle: RedisLifecycle;
     keys: RedisKeys;
     channels: RedisChannels;
-    health(): Promise<DependencyHealth>;
+    health(): Promise<HealthCheckResult>;
   };
   rateLimit: {
     limiter: RateLimiter;
@@ -107,6 +110,11 @@ export interface ApplicationContainer {
   };
   cache: {
     client: Cache;
+  };
+  health: {
+    databaseCheck: HealthCheck;
+    redisCheck: HealthCheck;
+    readinessService: ReadinessService;
   };
   presence: {
     repository: PresenceRepository;
@@ -207,6 +215,17 @@ export async function createApplicationContainer(
     failMode: config.rateLimit.failMode,
     logger: logger.child({ component: "RateLimiter" }),
   });
+  const databaseHealthCheck = createDatabaseHealthCheck({ database });
+  const redisHealthCheck = createRedisHealthCheck({
+    redis: redisClients.command,
+    enabled: config.redis.enabled,
+    timeoutMs: config.redis.commandTimeoutMs,
+  });
+  const readinessService = createReadinessService({
+    databaseHealthCheck,
+    redisHealthCheck,
+    redisRequired: config.redis.required,
+  });
   const loginRateLimitMiddleware = createLoginRateLimitMiddleware({
     rateLimiter,
     redisKeys,
@@ -278,14 +297,7 @@ export async function createApplicationContainer(
     maxBodyBytes: 16 * 1024,
     loginRateLimitMiddleware,
     refreshTokenCookie: config.auth.refreshToken.cookie,
-    health: {
-      redisRequired: config.redis.required,
-      checkRedis: () => checkRedisHealth({
-        enabled: config.redis.enabled,
-        client: redisClients.command,
-        timeoutMs: config.redis.commandTimeoutMs,
-      }),
-    },
+    readinessService,
     runtime: options.authHttpRuntime,
   });
   const httpLogger = logger.child({ transport: "http" });
@@ -364,17 +376,18 @@ export async function createApplicationContainer(
       lifecycle: redisLifecycle,
       keys: redisKeys,
       channels: redisChannels,
-      health: () => checkRedisHealth({
-        enabled: config.redis.enabled,
-        client: redisClients.command,
-        timeoutMs: config.redis.commandTimeoutMs,
-      }),
+      health: redisHealthCheck.check,
     },
     rateLimit: {
       limiter: rateLimiter,
       loginMiddleware: loginRateLimitMiddleware,
     },
     cache: { client: cache },
+    health: {
+      databaseCheck: databaseHealthCheck,
+      redisCheck: redisHealthCheck,
+      readinessService,
+    },
     presence: {
       repository: presenceRepository,
     },

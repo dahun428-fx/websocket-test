@@ -10,7 +10,9 @@ import {
     createAuthHandlers,
     type AuthHandlerRuntimeOptions,
 } from "./handlers/authHandlers";
+import { livenessHandler } from "./handlers/livenessHandler";
 import { createPublicIndexHandler } from "./handlers/publicIndexHandler";
+import { createReadinessHandler } from "./handlers/readinessHandler";
 import { createRoomHandlers } from "./handlers/roomHandlers";
 import { authenticate } from "./middleware/authenticate";
 import { parseJsonBody } from "./middleware/parseJsonBody";
@@ -18,7 +20,7 @@ import { validateBody } from "./middleware/validateBody";
 import type { Middleware } from "./middleware/middleware";
 import type { HttpRouter } from "./router/router";
 import type { RefreshTokenCookieOptions } from "./cookieUtils";
-import type { DependencyHealth } from "../infrastructure/redis/redisHealthCheck";
+import type { ReadinessService } from "../health/readinessService";
 
 export interface RegisterRoutesOptions {
     router: HttpRouter;
@@ -31,10 +33,7 @@ export interface RegisterRoutesOptions {
     maxBodyBytes: number;
     loginRateLimitMiddleware: Middleware;
     refreshTokenCookie: RefreshTokenCookieOptions;
-    health: {
-        redisRequired: boolean;
-        checkRedis(): Promise<DependencyHealth>;
-    };
+    readinessService: ReadinessService;
     runtime?: AuthHandlerRuntimeOptions;
 }
 
@@ -55,25 +54,10 @@ export function registerRoutes(options: RegisterRoutesOptions): void {
         handler: createPublicIndexHandler(options.publicIndexPath),
     });
     options.router.get("/health/live", {
-        handler: async (context) => {
-            context.json(200, { status: "alive" });
-        },
+        handler: livenessHandler,
     });
     options.router.get("/health/ready", {
-        handler: async (context) => {
-            const redis = await options.health.checkRedis();
-            const unavailable = redis.status === "down";
-            const ready = !options.health.redisRequired || !unavailable;
-            context.json(ready ? 200 : 503, {
-                status: ready
-                    ? (unavailable ? "degraded" : "ready")
-                    : "not_ready",
-                dependencies: {
-                    database: "up",
-                    redis,
-                },
-            });
-        },
+        handler: createReadinessHandler(options.readinessService),
     });
     options.router.post("/login", {
         middleware: [

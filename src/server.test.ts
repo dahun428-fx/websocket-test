@@ -135,12 +135,12 @@ describe("Application", () => {
     const ready = await fetch(`${baseUrl}/health/ready`);
 
     expect(live.status).toBe(200);
-    await expect(live.json()).resolves.toEqual({ status: "alive" });
+    await expect(live.json()).resolves.toMatchObject({ status: "alive" });
     expect(ready.status).toBe(200);
     await expect(ready.json()).resolves.toMatchObject({
       status: "ready",
       dependencies: {
-        database: "up",
+        database: { status: "up" },
         redis: { status: "disabled" },
       },
     });
