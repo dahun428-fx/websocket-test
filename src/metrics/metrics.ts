@@ -20,4 +20,9 @@ export interface Metrics {
     webSocketMessageSent(source: "direct" | "broadcast"): void;
     webSocketMessageSendFailed(source: "direct" | "broadcast"): void;
 
+    outboxEventProcessed(): void;
+    outboxEventRetried(): void;
+    outboxEventFailed(): void;
+    outboxEventRecovered(count: number): void;
+    setOutboxPendingEvents(count: number): void;
 }

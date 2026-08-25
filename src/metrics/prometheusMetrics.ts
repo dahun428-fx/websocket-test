@@ -47,6 +47,36 @@ export function createPrometheusMetrics(): Metrics {
         registers: [registry]
     })
 
+    const outboxEventsProcessed = new Counter({
+        name: "outbox_events_processed_total",
+        help: "Total number of successfully processed outbox events",
+        registers: [registry]
+    })
+
+    const outboxEventRetries = new Counter({
+        name: "outbox_event_retries_total",
+        help: "Total number of outbox event retries",
+        registers: [registry],
+    })
+
+    const outboxEventsFailed = new Counter({
+        name: "outbox_events_failed_total",
+        help: "Total number of permanently failed outbox events",
+        registers: [],
+    })
+
+    const outboxEventsRecovered = new Counter({
+        name: "outbox_events_recovered_total",
+        help: "Total number of recovered stale outbox events",
+        registers: [registry]
+    })
+
+    const outboxPendingEvents = new Gauge({
+        name: "outbox_pending_events",
+        help: "Current number of pending oubox events",
+        registers: [registry],
+    })
+
     const httpRequests = new Counter({
         name: "http_requests_total",
         help: "Total number of HTTP requests",
@@ -126,6 +156,27 @@ export function createPrometheusMetrics(): Metrics {
         webSocketMessageSendFailures.inc({ source })
     }
 
+    function outboxEventProcessed(): void {
+        outboxEventsProcessed.inc();
+    }
+
+    function outboxEventRetried(): void {
+        outboxEventRetries.inc()
+    }
+
+    function outboxEventFailed(): void {
+        outboxEventsFailed.inc();
+    }
+
+    function outboxEventRecovered(count: number): void {
+        outboxEventsRecovered.inc(count)
+    }
+
+    function setOutboxPendingEvents(count: number): void {
+        outboxPendingEvents.set(count)
+    }
+
+
     return {
         recordHttpRequest,
         collect,
@@ -136,7 +187,12 @@ export function createPrometheusMetrics(): Metrics {
         webSocketMessageParseFailed,
         webSocketMessageHandlingFailed,
         webSocketMessageSent,
-        webSocketMessageSendFailed
+        webSocketMessageSendFailed,
+        outboxEventFailed,
+        outboxEventProcessed,
+        outboxEventRetried,
+        outboxEventRecovered,
+        setOutboxPendingEvents,
     }
 
 }
